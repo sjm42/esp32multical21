@@ -19,6 +19,7 @@ anyhow = "1"
 askama = "0"
 axum = { version = "0", features = ["http1", "json"] }
 axum-macros = "0"
+cc1101 = "0"
 chrono = "0"
 crc = "3"
 critical-section = { version = "1.1", features = ["std"] }
