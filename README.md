@@ -178,23 +178,24 @@ ota_1,    app,  ota_1, ,        1984K
 
 ```json
 {
-  "total_volume_l": 123456,
-  "target_volume_l": 120000,
-  "flow_temp": 22,
-  "ambient_temp": 20,
-  "info_codes": 0,
-  "timestamp": "2025-01-15T12:30:00Z"
+   "total_m3": 362.705,
+   "target_m3": 360.093,
+   "flow_temp": 1,
+   "ambient_temp": 10,
+   "info_codes": 97,
+   "timestamp": 1771439618,
+   "timestamp_s": "2026-02-18T18:33:38Z"
 }
 ```
 
-The web UI polls `/uptime` and `/meter` every 10 seconds and renders a live dashboard.
+The web UI polls `/uptime` and `/meter` every 30 seconds and renders a live dashboard.
 
 ## MQTT
 
 When enabled, the device connects to the configured MQTT broker and publishes every 60 seconds when new data is available:
 
 - **`{topic}/uptime`** — `{"uptime": <seconds>}`
-- **`{topic}/meter`** — `{"total_m3": <f64>, "target_m3": <f64>, "flow_temp": <u8>, "ambient_temp": <u8>, "info_codes": <u8>, "uptime": <usize>}`
+- **`{topic}/meter`** — `{"total_m3": <f32>, "target_m3": <f32>, "flow_temp": <u8>, "ambient_temp": <u8>, "info_codes": <u8>, "timestamp": <i64>, "timestamp_s": <String>}`
 
 Volumes are published in cubic meters (converted from liters).
 The MQTT client ID is derived from the device MAC address: `esp32multical21-XX:XX:XX:XX:XX:XX`.
