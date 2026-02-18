@@ -79,25 +79,9 @@ impl<'a> WifiLoop<'a> {
         info!("WiFi setting credentials...");
         let wifi = self.wifi.as_mut().unwrap();
         wifi.set_configuration(&Configuration::Client(ClientConfiguration {
-            ssid: self
-                .state
-                .config
-                .read()
-                .await
-                .wifi_ssid
-                .as_str()
-                .try_into()
-                .unwrap(),
+            ssid: self.state.config.read().await.wifi_ssid.as_str().try_into().unwrap(),
 
-            password: self
-                .state
-                .config
-                .read()
-                .await
-                .wifi_pass
-                .as_str()
-                .try_into()
-                .unwrap(),
+            password: self.state.config.read().await.wifi_pass.as_str().try_into().unwrap(),
 
             ..Default::default()
         }))?;
@@ -122,11 +106,7 @@ impl<'a> WifiLoop<'a> {
             // way too difficult to showcase the core logic of an example and have
             // a proper Wi-Fi event loop without a robust async runtime.  Fortunately, we can do it
             // now!
-            let timeout = if initial {
-                Some(Duration::from_secs(30))
-            } else {
-                None
-            };
+            let timeout = if initial { Some(Duration::from_secs(30)) } else { None };
             Box::pin(wifi.wifi_wait(|w| w.is_up(), timeout)).await.ok();
 
             info!("WiFi connecting...");

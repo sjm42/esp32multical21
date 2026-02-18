@@ -83,7 +83,7 @@ const PREAMBLE_0: u8 = 0x54;
 const PREAMBLE_1: u8 = 0x3D;
 
 // Radio watchdog timeout: restart if no packet in 5 minutes
-const WATCHDOG_SECS: u64 = 900;
+const WATCHDOG_SECS: u64 = 300;
 
 pub struct Cc1101Radio<'a> {
     spi: spi::SpiDeviceDriver<'a, &'a esp_idf_hal::spi::SpiDriver<'a>>,
@@ -220,10 +220,7 @@ impl<'a> Cc1101Radio<'a> {
         // Verify chip
         let partnum = self.read_status(0x30); // PARTNUM
         let version = self.read_status(0x31); // VERSION
-        info!(
-            "CC1101: PARTNUM=0x{:02X} VERSION=0x{:02X}",
-            partnum, version
-        );
+        info!("CC1101: PARTNUM=0x{:02X} VERSION=0x{:02X}", partnum, version);
 
         // Start receiving
         self.start_receiver();
@@ -243,33 +240,26 @@ impl<'a> Cc1101Radio<'a> {
         //
         // We use a watchdog timeout to restart the radio if stuck.
 
-        let result = Box::pin(timeout(
-            Duration::from_secs(WATCHDOG_SECS),
-            self.wait_gdo0_packet(),
-        ))
-        .await;
+        let result = Box::pin(timeout(Duration::from_secs(WATCHDOG_SECS), self.poll_gdo0())).await;
 
         result.unwrap_or_else(|_| {
-            warn!(
-                    "CC1101: Watchdog timeout ({}s), no packet received",
-                    WATCHDOG_SECS
-                );
+            warn!("CC1101: Watchdog timeout ({}s), no packet received", WATCHDOG_SECS);
             None
         })
     }
 
-    async fn wait_gdo0_packet(&mut self) -> Option<Vec<u8>> {
+    async fn poll_gdo0(&mut self) -> Option<Vec<u8>> {
         // Poll GDO0 for high→low transition indicating packet received
         // GDO0=0x06: asserts on sync word, deasserts when packet ends (IDLE)
         loop {
             // Wait for GDO0 to go high (sync detected)
             while self.gdo0.is_low() {
-                sleep(Duration::from_millis(10)).await;
+                sleep(Duration::from_millis(5)).await;
             }
 
             // GDO0 is high = sync word detected, wait for it to go low (packet complete)
             while self.gdo0.is_high() {
-                sleep(Duration::from_millis(1)).await;
+                sleep(Duration::from_millis(10)).await;
             }
 
             // Packet received, radio is now in IDLE
@@ -306,10 +296,7 @@ impl<'a> Cc1101Radio<'a> {
 
             // Strip preamble, return L-field + payload
             let payload = fifo_data[2..].to_vec();
-            info!(
-                "CC1101: Valid wMBus packet, {} payload bytes",
-                payload.len()
-            );
+            info!("CC1101: Valid wMBus packet, {} payload bytes", payload.len());
             return Some(payload);
         }
     }

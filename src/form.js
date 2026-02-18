@@ -64,14 +64,15 @@ async function update_meter() {
     try {
         const response = await fetch("/meter");
         const json = await response.json();
-        if (json.total_volume_l !== undefined) {
+        if (json.total_m3 !== undefined) {
             o.innerHTML = "<table>" +
-                "<tr><td>Total:</td><td>" + (json.total_volume_l / 1000).toFixed(3) + " m3</td></tr>" +
-                "<tr><td>Target:</td><td>" + (json.target_volume_l / 1000).toFixed(3) + " m3</td></tr>" +
+                "<tr><td>Total:</td><td>" + json.total_m3.toFixed(3) + " m3</td></tr>" +
+                "<tr><td>Target:</td><td>" + json.target_m3.toFixed(3) + " m3</td></tr>" +
                 "<tr><td>Flow temp:</td><td>" + json.flow_temp + " &deg;C</td></tr>" +
                 "<tr><td>Ambient temp:</td><td>" + json.ambient_temp + " &deg;C</td></tr>" +
                 "<tr><td>Info codes:</td><td>0x" + json.info_codes.toString(16).padStart(2, '0') + "</td></tr>" +
                 "<tr><td>Timestamp:</td><td>" + json.timestamp + "</td></tr>" +
+                "<tr><td>Data received at:</td><td>" + json.timestamp_s + "</td></tr>" +
                 "</table>";
         } else {
             o.innerHTML = "<p>No meter reading yet</p>";

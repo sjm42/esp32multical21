@@ -1,6 +1,5 @@
 // config.rs
 
-use askama::Template;
 use crc::{Crc, CRC_32_ISCSI};
 use esp_idf_svc::nvs;
 
@@ -137,10 +136,7 @@ impl MyConfig {
                 bail!("{estr}");
             }
         };
-        info!(
-            "Encoded config to {sz} bytes. Saving to nvs...",
-            sz = nvsdata.len()
-        );
+        info!("Encoded config to {sz} bytes. Saving to nvs...", sz = nvsdata.len());
 
         match nvs.set_raw(CONFIG_NAME, nvsdata) {
             Ok(_) => {

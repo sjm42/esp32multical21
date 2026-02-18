@@ -76,17 +76,20 @@ async fn data_sender(
         }
 
         // Publish meter reading if available
-        if let Some(ref reading) = *state.meter.read().await {
+        if let Some(ref reading) = *state.latest_data.read().await {
             let topic = format!("{mqtt_topic}/meter");
+            /*
             let mqtt_data = format!(
                 "{{ \"total_m3\": {:.3}, \"target_m3\": {:.3}, \"flow_temp\": {}, \"ambient_temp\": {}, \"info_codes\": {}, \"uptime\": {} }}",
-                reading.total_volume_l as f64 / 1000.0,
-                reading.target_volume_l as f64 / 1000.0,
+                reading.total_m3 as f64 / 1000.0,
+                reading.target_m3 as f64 / 1000.0,
                 reading.flow_temp,
                 reading.ambient_temp,
                 reading.info_codes,
                 uptime
             );
+            */
+            let mqtt_data = serde_json::to_string(&reading)?;
             Box::pin(mqtt_send(&mut client, &topic, true, &mqtt_data)).await?;
         }
     }
@@ -101,12 +104,7 @@ async fn mqtt_send(
     info!("MQTT sending {topic} {data}");
 
     let result = client
-        .publish(
-            topic,
-            mqtt::client::QoS::AtLeastOnce,
-            retain,
-            data.as_bytes(),
-        )
+        .publish(topic, mqtt::client::QoS::AtLeastOnce, retain, data.as_bytes())
         .await;
     if let Err(e) = result {
         let msg = format!("MQTT send error: {e}");

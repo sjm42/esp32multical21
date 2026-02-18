@@ -88,6 +88,140 @@ Changes take effect after an automatic reboot.
 
 Environment variables `WIFI_SSID`, `WIFI_PASS`, and `API_PORT` provide build-time defaults.
 
+## Home Assistant integration via MQTT
+
+Setup your MQTT broker first.
+
+To your main config `configuration.yaml` you probably want to add:
+```
+mqtt: !include_dir_list mqtt
+```
+
+Add this to your `mqtt` subdirectory, as `watermeter.yaml` or whatever filename you like:
+
+```
+sensor:
+  - name: "Water Meter Usage"
+    unique_id: "water_total"
+    state_topic: "watermeter/meter"
+    unit_of_measurement: "m³"
+    value_template: "{{ value_json.total_m3 }}"
+    device_class: water
+    state_class: total_increasing
+  - name: "Water Meter Room Temperature"
+    unique_id: "water_temp_room"
+    state_topic: "watermeter/meter"
+    value_template: "{{ value_json.ambient_temp }}"
+    unit_of_measurement: "°C"
+  - name: "Water Meter Water Temperature"
+    unique_id: "water_temp_water"
+    state_topic: "watermeter/meter"
+    value_template: "{{ value_json.flow_temp }}"
+    unit_of_measurement: "°C"
+  - name: "Water Meter uptime"
+    unique_id: "water_uptime"
+    state_topic: "watermeter/uptime"
+    value_template: "{{ value_json.uptime }}"
+    unit_of_measurement: "s"
+```
+
+## HTTP API
+
+Served by Axum on port 80 (configurable).
+
+| Method  | Path           | Description                          |
+|---------|----------------|--------------------------------------|
+| GET     | `/`            | Web configuration UI (Askama template) |
+| GET     | `/uptime`      | `{"uptime": <seconds>}`             |
+| GET     | `/conf`        | Current config as JSON               |
+| POST    | `/conf`        | Save config and reboot               |
+| GET     | `/reset_conf`  | Factory reset and reboot             |
+| GET     | `/meter`       | Current meter reading as JSON        |
+| POST    | `/fw`          | OTA firmware update (form field `url`) |
+
+## OTA Firmware Update
+
+The flash is partitioned into two 1984 KB OTA slots (`ota_0`, `ota_1`). To update:
+
+1. Host the new firmware binary on an HTTP server
+2. POST to `/fw` with form field `url` pointing to the binary
+3. The device downloads the firmware, writes it to the inactive OTA slot, and reboots
+4. On boot, the new firmware calls `mark_running_slot_valid()`
+   — if it crashes before doing so, the bootloader automatically rolls back to the previous slot
+
+### Partition Table
+
+```
+nvs,      data, nvs,   0x9000,  0x4000   (16 KB)
+otadata,  data, ota,   0xd000,  0x2000   (8 KB)
+phy_init, data, phy,   0xf000,  0x1000   (4 KB)
+ota_0,    app,  ota_0, ,        1984K
+ota_1,    app,  ota_1, ,        1984K
+```
+
+## Watchdogs & Recovery
+
+- **Reset button**: Hold GPIO9 low for 5 seconds to factory-reset configuration and reboot
+- **WiFi watchdog**: If initial WiFi connection fails within 30 seconds, the device reboots
+- **Ping watchdog**: Every 5 minutes, pings the gateway 3 times. If all fail, reboots
+- **Radio watchdog**: If no packet is received for 5 minutes, the CC1101 is reinitialized
+- **OTA rollback**: If new firmware fails to mark itself valid, the bootloader reverts to the previous slot
+
+## Build Configuration
+
+- **Rust edition**: 2024 (nightly)
+- **Release profile**: `opt-level = "z"` (size-optimized), fat LTO, single codegen unit
+- **ESP-IDF**: v5.4.3, main task stack 20 KB, FreeRTOS tick rate 1 kHz
+- **Clippy**: `future-size-threshold = 128` to catch oversized futures
+
+### Meter Reading Response
+
+```json
+{
+  "total_volume_l": 123456,
+  "target_volume_l": 120000,
+  "flow_temp": 22,
+  "ambient_temp": 20,
+  "info_codes": 0,
+  "timestamp": "2025-01-15T12:30:00Z"
+}
+```
+
+The web UI polls `/uptime` and `/meter` every 10 seconds and renders a live dashboard.
+
+## MQTT
+
+When enabled, the device connects to the configured MQTT broker and publishes every 60 seconds when new data is available:
+
+- **`{topic}/uptime`** — `{"uptime": <seconds>}`
+- **`{topic}/meter`** — `{"total_m3": <f64>, "target_m3": <f64>, "flow_temp": <u8>, "ambient_temp": <u8>, "info_codes": <u8>, "uptime": <usize>}`
+
+Volumes are published in cubic meters (converted from liters).
+The MQTT client ID is derived from the device MAC address: `esp32multical21-XX:XX:XX:XX:XX:XX`.
+
+## wMBus Protocol
+
+The CC1101 radio listens for wireless M-Bus C1 mode telegrams at 868.3 MHz. When a packet arrives:
+
+1. **Sync detection** — CC1101 matches the C1 preamble `0x543D`
+2. **Meter ID filtering** — Only packets matching the configured meter serial are processed
+3. **AES-128-CTR decryption** — The 16-byte IV is constructed from the frame header fields (manufacturer, address, communication control, session number)
+4. **CRC-16 validation** — EN 13757 polynomial `0x3D65` verifies payload integrity
+5. **Payload parsing** — Multical 21 compact (CI `0x79`) or long (CI `0x78`) frame format extracts volume, temperature, and status data
+
+### Frame Structure
+
+```
+Over the air:
+[Preamble 0x543D] [L] [C] [M-field 2B] [A-field 6B] [CI] [CC] [ACC] [SN 4B] [Encrypted Payload] [CRC]
+
+After decryption:
+[CRC-16 2B] [CI] [Info] ... [Total Volume 4B] ... [Target Volume 4B] ... [Flow Temp] [Ambient Temp]
+```
+
+The meter ID is encoded in little-endian BCD on the wire
+— a meter printing serial `12345678` transmits bytes `[0x78, 0x56, 0x34, 0x12]`.
+
 ## Architecture
 
 The binary entry point (`src/bin/esp32multical21.rs`) initializes hardware, loads config from NVS,
@@ -140,102 +274,6 @@ All tasks share a single `Arc<Pin<Box<MyState>>>` instance with `RwLock`-protect
 6. Launch Tokio runtime with six concurrent tasks
 7. WiFi connects (30s timeout, reboots on failure), then all services start
 
-## HTTP API
-
-Served by Axum on port 80 (configurable).
-
-| Method  | Path           | Description                          |
-|---------|----------------|--------------------------------------|
-| GET     | `/`            | Web configuration UI (Askama template) |
-| GET     | `/uptime`      | `{"uptime": <seconds>}`             |
-| GET     | `/conf`        | Current config as JSON               |
-| POST    | `/conf`        | Save config and reboot               |
-| GET     | `/reset_conf`  | Factory reset and reboot             |
-| GET     | `/meter`       | Current meter reading as JSON        |
-| POST    | `/fw`          | OTA firmware update (form field `url`) |
-
-### Meter Reading Response
-
-```json
-{
-  "total_volume_l": 123456,
-  "target_volume_l": 120000,
-  "flow_temp": 22,
-  "ambient_temp": 20,
-  "info_codes": 0,
-  "timestamp": "2025-01-15T12:30:00Z"
-}
-```
-
-The web UI polls `/uptime` and `/meter` every 10 seconds and renders a live dashboard.
-
-## MQTT
-
-When enabled, the device connects to the configured MQTT broker and publishes every 60 seconds when new data is available:
-
-- **`{topic}/uptime`** — `{"uptime": <seconds>}`
-- **`{topic}/meter`** — `{"total_m3": <f64>, "target_m3": <f64>, "flow_temp": <u8>, "ambient_temp": <u8>, "info_codes": <u8>, "uptime": <usize>}`
-
-Volumes are published in cubic meters (converted from liters).
-The MQTT client ID is derived from the device MAC address: `esp32multical21-XX:XX:XX:XX:XX:XX`.
-
-## wMBus Protocol
-
-The CC1101 radio listens for wireless M-Bus C1 mode telegrams at 868.3 MHz. When a packet arrives:
-
-1. **Sync detection** — CC1101 matches the C1 preamble `0x543D`
-2. **Meter ID filtering** — Only packets matching the configured meter serial are processed
-3. **AES-128-CTR decryption** — The 16-byte IV is constructed from the frame header fields (manufacturer, address, communication control, session number)
-4. **CRC-16 validation** — EN 13757 polynomial `0x3D65` verifies payload integrity
-5. **Payload parsing** — Multical 21 compact (CI `0x79`) or long (CI `0x78`) frame format extracts volume, temperature, and status data
-
-### Frame Structure
-
-```
-Over the air:
-[Preamble 0x543D] [L] [C] [M-field 2B] [A-field 6B] [CI] [CC] [ACC] [SN 4B] [Encrypted Payload] [CRC]
-
-After decryption:
-[CRC-16 2B] [CI] [Info] ... [Total Volume 4B] ... [Target Volume 4B] ... [Flow Temp] [Ambient Temp]
-```
-
-The meter ID is encoded in little-endian BCD on the wire
-— a meter printing serial `12345678` transmits bytes `[0x78, 0x56, 0x34, 0x12]`.
-
-## OTA Firmware Update
-
-The flash is partitioned into two 1984 KB OTA slots (`ota_0`, `ota_1`). To update:
-
-1. Host the new firmware binary on an HTTP server
-2. POST to `/fw` with form field `url` pointing to the binary
-3. The device downloads the firmware, writes it to the inactive OTA slot, and reboots
-4. On boot, the new firmware calls `mark_running_slot_valid()`
-   — if it crashes before doing so, the bootloader automatically rolls back to the previous slot
-
-### Partition Table
-
-```
-nvs,      data, nvs,   0x9000,  0x4000   (16 KB)
-otadata,  data, ota,   0xd000,  0x2000   (8 KB)
-phy_init, data, phy,   0xf000,  0x1000   (4 KB)
-ota_0,    app,  ota_0, ,        1984K
-ota_1,    app,  ota_1, ,        1984K
-```
-
-## Watchdogs & Recovery
-
-- **Reset button**: Hold GPIO9 low for 5 seconds to factory-reset configuration and reboot
-- **WiFi watchdog**: If initial WiFi connection fails within 30 seconds, the device reboots
-- **Ping watchdog**: Every 5 minutes, pings the gateway 3 times. If all fail, reboots
-- **Radio watchdog**: If no packet is received for 5 minutes, the CC1101 is reinitialized
-- **OTA rollback**: If new firmware fails to mark itself valid, the bootloader reverts to the previous slot
-
-## Build Configuration
-
-- **Rust edition**: 2024 (nightly)
-- **Release profile**: `opt-level = "z"` (size-optimized), fat LTO, single codegen unit
-- **ESP-IDF**: v5.4.3, main task stack 20 KB, FreeRTOS tick rate 1 kHz
-- **Clippy**: `future-size-threshold = 128` to catch oversized futures
 
 ## License
 

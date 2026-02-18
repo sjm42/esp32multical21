@@ -2,13 +2,17 @@
 
 #![warn(clippy::large_futures)]
 
+use esp32multical21::*;
 use esp_idf_svc::{
-    eventloop::EspSystemEventLoop, hal::gpio, hal::spi::SpiDeviceDriver, nvs, ota::EspOta, ping,
-    timer::EspTaskTimerService, wifi::WifiDriver,
+    eventloop::EspSystemEventLoop,
+    hal::{gpio, spi::SpiDeviceDriver},
+    nvs,
+    ota::EspOta,
+    ping,
+    timer::EspTaskTimerService,
+    wifi::WifiDriver,
 };
 use esp_idf_sys::esp;
-
-use esp32multical21::*;
 
 const CONFIG_RESET_COUNT: i32 = 9;
 
@@ -83,11 +87,7 @@ fn main() -> anyhow::Result<()> {
     // Create CC1101 radio
     let radio = Cc1101Radio::new(dev, gdo0);
 
-    let wifidriver = WifiDriver::new(
-        peripherals.modem,
-        sysloop.clone(),
-        Some(nvs_default_partition),
-    )?;
+    let wifidriver = WifiDriver::new(peripherals.modem, sysloop.clone(), Some(nvs_default_partition))?;
 
     let state = Box::pin(MyState::new(config, nvs, ota_slot));
     let shared_state = Arc::new(state);

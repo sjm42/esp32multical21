@@ -1,4 +1,5 @@
 // lib.rs
+
 #![warn(clippy::large_futures)]
 
 pub use std::{net, pin::Pin, sync::Arc};
@@ -6,10 +7,10 @@ pub use std::{net, pin::Pin, sync::Arc};
 pub use anyhow::bail;
 pub use askama::Template;
 pub use chrono::*;
-pub use esp_idf_hal::prelude::*;
 pub use esp_idf_hal::{
     delay::FreeRtos,
     gpio::{AnyInputPin, Input, InputPin, PinDriver},
+    prelude::*,
     spi,
 };
 pub use log::*;
@@ -20,12 +21,13 @@ pub const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MeterReading {
-    pub total_volume_l: u32,
-    pub target_volume_l: u32,
+    pub total_m3: f32,
+    pub target_m3: f32,
     pub flow_temp: u8,
     pub ambient_temp: u8,
     pub info_codes: u8,
-    pub timestamp: String,
+    pub timestamp: i64,
+    pub timestamp_s: String,
 }
 
 #[derive(Clone, Debug, Serialize)]

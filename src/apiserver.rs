@@ -10,10 +10,9 @@ use axum::{
     Json,
     Router,
 };
+pub use axum_macros::debug_handler;
 use embedded_svc::http::client::Client as HttpClient;
 use esp_idf_svc::{http::client::EspHttpConnection, io, ota::EspOta};
-
-pub use axum_macros::debug_handler;
 
 use crate::*;
 
@@ -151,13 +150,9 @@ pub async fn get_meter(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<
     };
     info!("#{cnt} get_meter()");
 
-    match &*state.meter.read().await {
+    match &*state.latest_data.read().await {
         Some(reading) => (StatusCode::OK, Json(reading.clone())).into_response(),
-        None => (
-            StatusCode::OK,
-            Json(serde_json::json!({"status": "no reading"})),
-        )
-            .into_response(),
+        None => (StatusCode::OK, Json(serde_json::json!({"status": "no reading"}))).into_response(),
     }
 }
 

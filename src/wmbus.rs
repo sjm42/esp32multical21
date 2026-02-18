@@ -1,8 +1,10 @@
 // wmbus.rs — wMBus frame decoding, CRC-16, AES-128-CTR decryption
 
 use aes::Aes128;
-use ctr::cipher::{KeyIvInit, StreamCipher};
-use ctr::Ctr128BE;
+use ctr::{
+    cipher::{KeyIvInit, StreamCipher},
+    Ctr128BE,
+};
 
 use crate::*;
 
@@ -29,10 +31,7 @@ pub fn check_meter_id(payload: &[u8], meter_id: &[u8; 4]) -> bool {
         return false;
     }
     // Compare bytes directly — meter_id should already be in wire order
-    payload[4] == meter_id[0]
-        && payload[5] == meter_id[1]
-        && payload[6] == meter_id[2]
-        && payload[7] == meter_id[3]
+    payload[4] == meter_id[0] && payload[5] == meter_id[1] && payload[6] == meter_id[2] && payload[7] == meter_id[3]
 }
 
 /// Construct AES-128-CTR IV for ELL-II (CI=0x8D) from wMBus frame header.
@@ -63,7 +62,9 @@ fn decrypt_payload(raw: &[u8], key: &[u8; 16]) -> Option<Vec<u8>> {
     if encrypted_start >= encrypted_end || encrypted_end > raw.len() {
         warn!(
             "wMBus: No encrypted data (start={}, end={}, len={})",
-            encrypted_start, encrypted_end, raw.len()
+            encrypted_start,
+            encrypted_end,
+            raw.len()
         );
         return None;
     }
@@ -105,6 +106,6 @@ pub fn parse_frame(raw: &[u8], meter_id: &[u8; 4], key: &[u8; 16]) -> Option<Met
     }
 
     let decrypted = decrypt_payload(raw, key)?;
-    crate::multical21::parse_multical21(&decrypted)
+    parse_multical21(&decrypted)
 }
 // EOF

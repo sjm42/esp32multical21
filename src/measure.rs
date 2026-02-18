@@ -4,10 +4,7 @@ use esp_idf_svc::sntp;
 
 use crate::*;
 
-pub async fn read_meter(
-    state: Arc<Pin<Box<MyState>>>,
-    mut radio: Cc1101Radio<'_>,
-) -> anyhow::Result<()> {
+pub async fn read_meter(state: Arc<Pin<Box<MyState>>>, mut radio: Cc1101Radio<'_>) -> anyhow::Result<()> {
     let mut cnt = 0;
     let ntp = sntp::EspSntp::new_default()?;
     sleep(Duration::from_secs(10)).await;
@@ -78,7 +75,7 @@ pub async fn read_meter(
                 match parse_frame(&payload, &meter_id, &meter_key) {
                     Some(reading) => {
                         info!("Meter reading: {:?}", reading);
-                        *state.meter.write().await = Some(reading);
+                        *state.latest_data.write().await = Some(reading);
                         *state.data_updated.write().await = true;
                     }
                     None => {
