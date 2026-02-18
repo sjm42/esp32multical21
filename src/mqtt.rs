@@ -72,7 +72,7 @@ async fn data_sender(
         {
             let topic = format!("{mqtt_topic}/uptime");
             let mqtt_data = format!("{{ \"uptime\": {} }}", uptime);
-            Box::pin(mqtt_send(&mut client, &topic, &mqtt_data)).await?;
+            Box::pin(mqtt_send(&mut client, &topic, false, &mqtt_data)).await?;
         }
 
         // Publish meter reading if available
@@ -87,7 +87,7 @@ async fn data_sender(
                 reading.info_codes,
                 uptime
             );
-            Box::pin(mqtt_send(&mut client, &topic, &mqtt_data)).await?;
+            Box::pin(mqtt_send(&mut client, &topic, true, &mqtt_data)).await?;
         }
     }
 }
@@ -95,6 +95,7 @@ async fn data_sender(
 async fn mqtt_send(
     client: &mut mqtt::client::EspAsyncMqttClient,
     topic: &str,
+    retain: bool,
     data: &str,
 ) -> Result<MessageId, EspError> {
     info!("MQTT sending {topic} {data}");
@@ -103,7 +104,7 @@ async fn mqtt_send(
         .publish(
             topic,
             mqtt::client::QoS::AtLeastOnce,
-            false,
+            retain,
             data.as_bytes(),
         )
         .await;
