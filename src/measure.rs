@@ -4,7 +4,7 @@ use esp_idf_svc::sntp;
 
 use crate::*;
 
-pub async fn poll_sensors(
+pub async fn read_meter(
     state: Arc<Pin<Box<MyState>>>,
     mut radio: Cc1101Radio<'_>,
 ) -> anyhow::Result<()> {

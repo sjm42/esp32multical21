@@ -18,6 +18,21 @@ pub use tokio::time::{sleep, timeout, Duration};
 
 pub const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+#[derive(Clone, Debug, Serialize)]
+pub struct MeterReading {
+    pub total_volume_l: u32,
+    pub target_volume_l: u32,
+    pub flow_temp: u8,
+    pub ambient_temp: u8,
+    pub info_codes: u8,
+    pub timestamp: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Uptime {
+    pub uptime: usize,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct UpdateFirmware {
     pub url: String,

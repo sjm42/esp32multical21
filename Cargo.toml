@@ -2,7 +2,7 @@
 
 [package]
 name = "esp32multical21"
-version = "0.1.1"
+version = "1.0.0"
 authors = ["Sami J. Mäkinen <sjm@iki.fi>"]
 edition = "2024"
 
@@ -44,11 +44,11 @@ anyhow = "1"
 
 
 [profile.release]
-debug = true
+debug = false
 opt-level = "z"
 codegen-units = 1
 lto = "fat"
-strip = false
+strip = true
 
 
 [profile.dev]

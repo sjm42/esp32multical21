@@ -58,7 +58,7 @@ async fn data_sender(
     let mqtt_topic = state.config.read().await.mqtt_topic.clone();
 
     loop {
-        sleep(Duration::from_secs(5)).await;
+        sleep(Duration::from_secs(10)).await;
         let uptime = *(state.uptime.read().await);
 
         {

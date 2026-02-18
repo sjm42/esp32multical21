@@ -83,7 +83,7 @@ const PREAMBLE_0: u8 = 0x54;
 const PREAMBLE_1: u8 = 0x3D;
 
 // Radio watchdog timeout: restart if no packet in 5 minutes
-const WATCHDOG_SECS: u64 = 300;
+const WATCHDOG_SECS: u64 = 900;
 
 pub struct Cc1101Radio<'a> {
     spi: spi::SpiDeviceDriver<'a, &'a esp_idf_hal::spi::SpiDriver<'a>>,
@@ -249,16 +249,13 @@ impl<'a> Cc1101Radio<'a> {
         ))
         .await;
 
-        match result {
-            Ok(pkt) => pkt,
-            Err(_) => {
-                warn!(
+        result.unwrap_or_else(|_| {
+            warn!(
                     "CC1101: Watchdog timeout ({}s), no packet received",
                     WATCHDOG_SECS
                 );
-                None
-            }
-        }
+            None
+        })
     }
 
     async fn wait_gdo0_packet(&mut self) -> Option<Vec<u8>> {

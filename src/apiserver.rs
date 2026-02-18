@@ -17,11 +17,6 @@ pub use axum_macros::debug_handler;
 
 use crate::*;
 
-#[derive(Clone, Debug, Serialize)]
-pub struct Uptime {
-    pub uptime: usize,
-}
-
 pub async fn run_api_server(state: Arc<Pin<Box<MyState>>>) -> anyhow::Result<()> {
     loop {
         if *state.wifi_up.read().await {

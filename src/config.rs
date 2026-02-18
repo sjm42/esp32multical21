@@ -9,8 +9,6 @@ use crate::*;
 pub const NVS_BUF_SIZE: usize = 256;
 
 const DEFAULT_API_PORT: u16 = 80;
-const DEFAULT_SENSOR_RETRIES: u32 = 5;
-const DEFAULT_POLL_DELAY: u64 = 60;
 
 const CONFIG_NAME: &str = "cfg";
 
@@ -18,8 +16,6 @@ const CONFIG_NAME: &str = "cfg";
 #[template(path = "index.html.ask", escape = "html")]
 pub struct MyConfig {
     pub port: u16,
-    pub retries: u32,
-    pub delay: u64,
 
     pub wifi_ssid: String,
     pub wifi_pass: String,
@@ -46,8 +42,6 @@ impl Default for MyConfig {
                 .unwrap_or("-")
                 .parse()
                 .unwrap_or(DEFAULT_API_PORT),
-            retries: DEFAULT_SENSOR_RETRIES,
-            delay: DEFAULT_POLL_DELAY,
 
             wifi_ssid: option_env!("WIFI_SSID").unwrap_or("internet").into(),
             wifi_pass: option_env!("WIFI_PASS").unwrap_or("password").into(),

@@ -82,7 +82,7 @@ async function update_meter() {
 }
 
 function onLoad() {
-    setInterval(update_uptime, 10e3);
-    setInterval(update_meter, 10e3);
+    setInterval(update_uptime, 30e3);
+    setInterval(update_meter, 30e3);
     update_meter();
 }

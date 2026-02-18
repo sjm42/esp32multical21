@@ -2,15 +2,6 @@
 
 use crate::*;
 
-#[derive(Clone, Debug, Serialize)]
-pub struct MeterReading {
-    pub total_volume_l: u32,
-    pub target_volume_l: u32,
-    pub flow_temp: u8,
-    pub ambient_temp: u8,
-    pub info_codes: u8,
-    pub timestamp: String,
-}
 
 /// Parse decrypted Multical 21 payload into a MeterReading.
 /// Decrypted data layout (matching C++ reference):
