@@ -2,13 +2,9 @@
 
 #![warn(clippy::large_futures)]
 
-use esp32multical21::*;
-use esp_idf_svc::{
-    eventloop::EspSystemEventLoop,
-    ping,
-    timer::EspTaskTimerService,
-};
+use esp_idf_svc::{eventloop::EspSystemEventLoop, ping, timer::EspTaskTimerService};
 use esp_idf_sys::esp;
+use esp32multical21::*;
 
 const CONFIG_RESET_COUNT: i32 = 9;
 
@@ -113,10 +109,7 @@ fn main() -> anyhow::Result<()> {
     esp_idf_hal::reset::restart();
 }
 
-async fn poll_reset(
-    mut state: Arc<Pin<Box<MyState>>>,
-    button: PinDriver<'_, AnyInputPin, Input>,
-) -> AppResult<()> {
+async fn poll_reset(mut state: Arc<Pin<Box<MyState>>>, button: PinDriver<'_, AnyInputPin, Input>) -> AppResult<()> {
     let mut uptime: usize = 0;
     loop {
         sleep(Duration::from_secs(2)).await;

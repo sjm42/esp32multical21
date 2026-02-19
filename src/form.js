@@ -1,31 +1,31 @@
-var postCfgDataAsJson = async ({
-                                   url, formData
-                               }) => {
-    const formObj = Object.fromEntries(formData.entries());
-    formObj.port = parseInt(formObj.port);
-    formObj.retries = parseInt(formObj.retries);
-    formObj.delay = parseInt(formObj.delay);
-    formObj.v4dhcp = (formObj.v4dhcp === "on");
-    formObj.v4mask = parseInt(formObj.v4mask);
-    formObj.mqtt_enable = (formObj.mqtt_enable === "on");
-    if (!formObj.meter_id) formObj.meter_id = "";
-    if (!formObj.meter_key) formObj.meter_key = "";
-    const formDataJsonString = JSON.stringify(formObj);
+var postCfgDataAsJson =
+    async ({
+               url, formData
+           }) => {
+        const formObj = Object.fromEntries(formData.entries());
+        formObj.port = parseInt(formObj.port);
+        formObj.wifi_wpa2ent = (formObj.wifi_wpa2ent === "on");
+        formObj.v4dhcp = (formObj.v4dhcp === "on");
+        formObj.v4mask = parseInt(formObj.v4mask);
+        formObj.mqtt_enable = (formObj.mqtt_enable === "on");
+        if (!formObj.wifi_username) formObj.wifi_username = "";
+        if (!formObj.wifi_wpa2ent) formObj.wifi_username = "";
+        if (!formObj.meter_id) formObj.meter_id = "";
+        if (!formObj.meter_key) formObj.meter_key = "";
+        const formDataJsonString = JSON.stringify(formObj);
 
-    const fetchOptions = {
-        method: "POST", mode: 'cors', keepalive: false, headers: {
-            'Accept': 'application/json', 'Content-Type': 'application/json',
-        }, body: formDataJsonString,
-    };
-    const response = await fetch(url, fetchOptions);
-
-    if (!response.ok) {
-        const errorMessage = await response.text();
-        throw new Error(errorMessage);
+        const fetchOptions = {
+            method: "POST", mode: 'cors', keepalive: false, headers: {
+                'Accept': 'application/json', 'Content-Type': 'application/json',
+            }, body: formDataJsonString,
+        };
+        const response = await fetch(url, fetchOptions);
+        const payload = await response.json();
+        if (!response.ok || payload.ok === false) {
+            throw new Error(payload.message || "Config update failed");
+        }
+        return payload;
     }
-
-    return response.json();
-}
 
 var handleCfgSubmit = async (event) => {
     event.preventDefault();
@@ -33,7 +33,7 @@ var handleCfgSubmit = async (event) => {
     const url = form.action;
 
     try {
-        formData = new FormData(form);
+        const formData = new FormData(form);
         const responseData = await postCfgDataAsJson({
             url, formData
         });
@@ -55,7 +55,7 @@ async function update_uptime() {
     o.innerHTML = "Updating...";
     var url = "/uptime";
     const response = await fetch(url);
-    const json = JSON.parse(await response.text());
+    const json = await response.json();
     o.innerHTML = "<p>Uptime: " + json.uptime + " s</p>";
 }
 

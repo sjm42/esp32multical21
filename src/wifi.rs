@@ -1,6 +1,6 @@
 // wifi.rs
 
-use embedded_svc::wifi::{ClientConfiguration, Configuration};
+use embedded_svc::wifi::{AuthMethod, ClientConfiguration, Configuration};
 
 use crate::*;
 
@@ -18,17 +18,18 @@ impl<'a> WifiLoop<'a> {
     ) -> AppResult<()> {
         info!("Initializing Wi-Fi...");
 
-        let ipv4_config = if self.state.config.read().await.v4dhcp {
+        let config = self.state.config.read().await.clone();
+        let ipv4_config = if config.v4dhcp {
             ipv4::ClientConfiguration::DHCP(ipv4::DHCPClientSettings::default())
         } else {
             ipv4::ClientConfiguration::Fixed(ipv4::ClientSettings {
-                ip: self.state.config.read().await.v4addr,
+                ip: config.v4addr,
                 subnet: ipv4::Subnet {
-                    gateway: self.state.config.read().await.v4gw,
-                    mask: ipv4::Mask(self.state.config.read().await.v4mask),
+                    gateway: config.v4gw,
+                    mask: ipv4::Mask(config.v4mask),
                 },
-                dns: None,
-                secondary_dns: None,
+                dns: Some(config.dns1),
+                secondary_dns: Some(config.dns2),
             })
         };
         // info!("IP config: {ipv4_config:?}");
@@ -56,7 +57,7 @@ impl<'a> WifiLoop<'a> {
             esp_idf_hal::reset::restart();
         }
 
-        sleep(Duration::from_secs(10)).await;
+        sleep(Duration::from_secs(5)).await;
 
         let netif = self.wifi.as_ref().unwrap().wifi().sta_netif();
         let ip_info = netif.get_ip_info()?;
@@ -71,13 +72,51 @@ impl<'a> WifiLoop<'a> {
     pub async fn configure(&mut self) -> AppResult<()> {
         info!("WiFi setting credentials...");
         let wifi = self.wifi.as_mut().unwrap();
-        wifi.set_configuration(&Configuration::Client(ClientConfiguration {
-            ssid: self.state.config.read().await.wifi_ssid.as_str().try_into().unwrap(),
+        let config = self.state.config.read().await.clone();
 
-            password: self.state.config.read().await.wifi_pass.as_str().try_into().unwrap(),
-
+        let mut client_cfg = ClientConfiguration {
+            ssid: config
+                .wifi_ssid
+                .as_str()
+                .try_into()
+                .map_err(|e| AppError::Message(format!("Invalid WiFi SSID: {e:?}")))?,
             ..Default::default()
-        }))?;
+        };
+
+        if config.wifi_pass.is_empty() {
+            client_cfg.auth_method = AuthMethod::None;
+        } else {
+            client_cfg.auth_method = AuthMethod::WPA2Personal;
+            client_cfg.password = config
+                .wifi_pass
+                .as_str()
+                .try_into()
+                .map_err(|e| AppError::Message(format!("Invalid WiFi password: {e:?}")))?;
+        }
+
+        if config.wifi_wpa2ent {
+            client_cfg.auth_method = AuthMethod::WPA2Enterprise;
+
+            let username = config.wifi_username.as_bytes();
+            let password = config.wifi_pass.as_bytes();
+            unsafe {
+                esp_idf_sys::esp_eap_client_clear_ca_cert();
+                esp_idf_sys::esp_eap_client_clear_certificate_and_key();
+                esp_idf_sys::esp_eap_client_clear_identity();
+                esp_idf_sys::esp_eap_client_clear_username();
+                esp_idf_sys::esp_eap_client_clear_password();
+                esp_idf_sys::esp_eap_client_clear_new_password();
+
+                let ret1 = esp_idf_sys::esp_eap_client_set_identity(username.as_ptr(), username.len() as i32);
+                let ret2 = esp_idf_sys::esp_eap_client_set_username(username.as_ptr(), username.len() as i32);
+                let ret3 = esp_idf_sys::esp_eap_client_set_password(password.as_ptr(), password.len() as i32);
+                let ret4 = esp_idf_sys::esp_wifi_sta_enterprise_enable();
+
+                info!("WiFi WPA2 Enterprise: {ret1}:{ret2}:{ret3}:{ret4}");
+            }
+        }
+
+        wifi.set_configuration(&Configuration::Client(client_cfg))?;
 
         info!("WiFi driver starting...");
         Ok(Box::pin(wifi.start()).await?)

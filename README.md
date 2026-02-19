@@ -71,7 +71,9 @@ Device configuration is persisted in NVS (Non-Volatile Storage) as a Postcard-se
 |---------------|------------------------------------------|----------------|
 | `port`        | HTTP server port                         | 80             |
 | `wifi_ssid`   | WiFi SSID                                | from `env.sh`  |
-| `wifi_pass`   | WiFi password                            | from `env.sh`  |
+| `wifi_pass`   | WiFi password                            | from `env.sh` / empty |
+| `wifi_wpa2ent`| Use WPA2-Enterprise auth                 | false          |
+| `wifi_username` | WPA2-Enterprise username/identity      | (empty)        |
 | `v4dhcp`      | Use DHCP                                 | true           |
 | `v4addr`      | Static IPv4 address                      | 0.0.0.0        |
 | `v4mask`      | Subnet mask bits (0-30)                  | 0              |
@@ -79,12 +81,13 @@ Device configuration is persisted in NVS (Non-Volatile Storage) as a Postcard-se
 | `dns1`/`dns2` | DNS servers                              | 0.0.0.0        |
 | `mqtt_enable` | Enable MQTT publishing                   | false          |
 | `mqtt_url`    | MQTT broker URL                          | `mqtt://mqtt.local:1883` |
-| `mqtt_topic`  | MQTT topic prefix                        | `esp32temp`    |
+| `mqtt_topic`  | MQTT topic prefix                        | `watermeter`   |
 | `meter_id`    | Target meter serial (8 hex chars)        | (empty)        |
 | `meter_key`   | AES-128 decryption key (32 hex chars)    | (empty)        |
 
 Configuration can be changed through the web UI at `http://<device-ip>/` or via `POST /conf` with a JSON body.
 Changes take effect after an automatic reboot.
+`POST /conf` and `GET /reset_conf` return JSON in the form `{"ok": <bool>, "message": "<text>"}`.
 
 Environment variables `WIFI_SSID`, `WIFI_PASS`, and `API_PORT` provide build-time defaults.
 
@@ -133,9 +136,9 @@ Served by Axum on port 80 (configurable).
 |---------|----------------|--------------------------------------|
 | GET     | `/`            | Web configuration UI (Askama template) |
 | GET     | `/uptime`      | `{"uptime": <seconds>}`             |
-| GET     | `/conf`        | Current config as JSON               |
-| POST    | `/conf`        | Save config and reboot               |
-| GET     | `/reset_conf`  | Factory reset and reboot             |
+| GET     | `/conf`        | `{"ok": true, "config": {...}}`     |
+| POST    | `/conf`        | Save config and reboot. JSON response: `{"ok": <bool>, "message": "<text>"}` |
+| GET     | `/reset_conf`  | Factory reset and reboot. JSON response: `{"ok": <bool>, "message": "<text>"}` |
 | GET     | `/meter`       | Current meter reading as JSON        |
 | POST    | `/fw`          | OTA firmware update (form field `url`) |
 
@@ -261,7 +264,7 @@ All tasks share a single `Arc<Pin<Box<MyState>>>` instance with `RwLock`-protect
 | `src/wmbus.rs`     | wMBus C1 frame parsing, AES-128-CTR decryption     |
 | `src/multical21.rs`| Kamstrup Multical 21 payload parser                |
 | `src/measure.rs`   | Sensor polling loop — ties radio to state          |
-| `src/mqtt.rs`      | MQTT client lifecycle and publishing               |
+| `src/mqtt_sender.rs` | MQTT client lifecycle and publishing             |
 | `src/apiserver.rs` | Axum HTTP routes, web UI, OTA updates              |
 | `src/wifi.rs`      | WiFi connection/reconnection state machine         |
 

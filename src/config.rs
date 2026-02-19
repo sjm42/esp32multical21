@@ -1,6 +1,6 @@
 // config.rs
 
-use crc::{CRC_32_ISCSI, Crc};
+use crc::{Crc, CRC_32_ISCSI};
 
 use crate::*;
 
@@ -17,6 +17,8 @@ pub struct MyConfig {
 
     pub wifi_ssid: String,
     pub wifi_pass: String,
+    pub wifi_wpa2ent: bool,
+    pub wifi_username: String,
 
     pub v4dhcp: bool,
     pub v4addr: net::Ipv4Addr,
@@ -42,7 +44,9 @@ impl Default for MyConfig {
                 .unwrap_or(DEFAULT_API_PORT),
 
             wifi_ssid: option_env!("WIFI_SSID").unwrap_or("internet").into(),
-            wifi_pass: option_env!("WIFI_PASS").unwrap_or("password").into(),
+            wifi_pass: option_env!("WIFI_PASS").unwrap_or("").into(),
+            wifi_wpa2ent: false,
+            wifi_username: String::new(),
 
             v4dhcp: true,
             v4addr: net::Ipv4Addr::new(0, 0, 0, 0),

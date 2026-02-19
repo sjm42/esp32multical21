@@ -17,6 +17,8 @@
 {% let myform = [
                     ("text", "port", port.to_string(), "Port (1-65535)"),
                     ("text", "wifi_ssid", wifi_ssid.to_string(), "WiFi SSID"),
+                    ("checkbox", "wifi_wpa2ent", wifi_wpa2ent.to_string(), "WPA2 Enterprise"),
+                    ("text", "wifi_username", wifi_username.to_string(), "WiFi username"),
                     ("password", "wifi_pass", wifi_pass.to_string(), "WiFi password"),
                     ("checkbox", "v4dhcp", v4dhcp.to_string(), "DHCP enabled"),
                     ("text", "v4addr", v4addr.to_string(), "IPv4 address"),

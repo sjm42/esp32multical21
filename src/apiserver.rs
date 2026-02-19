@@ -1,12 +1,12 @@
 // apiserver.rs
 
 use axum::{
-    body::Body, extract::{Form, State},
-    http::{header, Response, StatusCode},
+    Json, Router,
+    body::Body,
+    extract::{Form, State, rejection::JsonRejection},
+    http::{Response, StatusCode, header},
     response::{Html, IntoResponse},
     routing::*,
-    Json,
-    Router,
 };
 pub use axum_macros::debug_handler;
 use embedded_svc::http::client::Client as HttpClient;
@@ -128,7 +128,7 @@ pub async fn get_uptime(State(state): State<Arc<Pin<Box<MyState>>>>) -> (StatusC
     (StatusCode::OK, Json(Uptime { uptime }))
 }
 
-pub async fn get_conf(State(state): State<Arc<Pin<Box<MyState>>>>) -> (StatusCode, Json<MyConfig>) {
+pub async fn get_conf(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
     let cnt = {
         let mut c = state.api_cnt.write().await;
         *c += 1;
@@ -136,7 +136,14 @@ pub async fn get_conf(State(state): State<Arc<Pin<Box<MyState>>>>) -> (StatusCod
     };
     info!("#{cnt} get_conf()");
 
-    (StatusCode::OK, Json(state.config.read().await.clone()))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "ok": true,
+            "config": state.config.read().await.clone(),
+        })),
+    )
+        .into_response()
 }
 
 pub async fn get_meter(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
@@ -155,8 +162,8 @@ pub async fn get_meter(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<
 
 pub async fn set_conf(
     State(state): State<Arc<Pin<Box<MyState>>>>,
-    Json(mut config): Json<MyConfig>,
-) -> (StatusCode, String) {
+    config_payload: Result<Json<MyConfig>, JsonRejection>,
+) -> Response<Body> {
     let cnt = {
         let mut c = state.api_cnt.write().await;
         *c += 1;
@@ -164,10 +171,32 @@ pub async fn set_conf(
     };
     info!("#{cnt} set_conf()");
 
+    let Json(mut config) = match config_payload {
+        Ok(config) => config,
+        Err(e) => {
+            let msg = format!("Invalid config JSON: {e}");
+            error!("{msg}");
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"ok": false, "message": msg})),
+            )
+                .into_response();
+        }
+    };
+
     if config.v4mask > 30 {
         let msg = "IPv4 mask error: bits must be between 0..30";
         error!("{}", msg);
-        return (StatusCode::INTERNAL_SERVER_ERROR, msg.to_string());
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"ok": false, "message": msg})),
+        )
+            .into_response();
+    }
+
+    if !config.wifi_wpa2ent {
+        // Username is only used for WPA2 Enterprise.
+        config.wifi_username.clear();
     }
 
     if config.v4dhcp {
@@ -183,7 +212,7 @@ pub async fn set_conf(
     Box::pin(save_conf(state, config)).await
 }
 
-pub async fn reset_conf(State(state): State<Arc<Pin<Box<MyState>>>>) -> (StatusCode, String) {
+pub async fn reset_conf(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
     let cnt = {
         let mut c = state.api_cnt.write().await;
         *c += 1;
@@ -195,18 +224,26 @@ pub async fn reset_conf(State(state): State<Arc<Pin<Box<MyState>>>>) -> (StatusC
     Box::pin(save_conf(state, MyConfig::default())).await
 }
 
-async fn save_conf(state: Arc<Pin<Box<MyState>>>, config: MyConfig) -> (StatusCode, String) {
+async fn save_conf(state: Arc<Pin<Box<MyState>>>, config: MyConfig) -> Response<Body> {
     let mut nvs = state.nvs.write().await;
     match config.to_nvs(&mut nvs) {
         Ok(_) => {
             info!("Config saved to nvs. Resetting soon...");
             *state.reset.write().await = true;
-            (StatusCode::OK, "OK".to_string())
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({"ok": true, "message": "Config saved, rebooting"})),
+            )
+                .into_response()
         }
         Err(e) => {
             let msg = format!("Nvs write error: {e:?}");
             error!("{}", msg);
-            (StatusCode::INTERNAL_SERVER_ERROR, msg)
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"ok": false, "message": msg})),
+            )
+                .into_response()
         }
     }
 }
