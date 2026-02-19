@@ -1,12 +1,8 @@
-// mqtt.rs
-
-use esp_idf_svc::mqtt::{self, client::MessageId};
-use esp_idf_sys::EspError;
+// mqtt_sender
 
 use crate::*;
 
-#[allow(unreachable_code)]
-pub async fn run_mqtt(state: Arc<Pin<Box<MyState>>>) -> anyhow::Result<()> {
+pub async fn run_mqtt(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
     if !state.config.read().await.mqtt_enable {
         info!("MQTT is disabled.");
         // we cannot return, otherwise tokio::select in main() will exit
@@ -40,7 +36,7 @@ pub async fn run_mqtt(state: Arc<Pin<Box<MyState>>>) -> anyhow::Result<()> {
         Err(e) => {
             let emsg = format!("MQTT conn failed: {e:?}");
             error!("{emsg}");
-            bail!("{emsg}");
+            return Err(AppError::Message(emsg));
         }
     };
 
@@ -51,10 +47,7 @@ pub async fn run_mqtt(state: Arc<Pin<Box<MyState>>>) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn data_sender(
-    state: Arc<Pin<Box<MyState>>>,
-    mut client: mqtt::client::EspAsyncMqttClient,
-) -> anyhow::Result<()> {
+async fn data_sender(state: Arc<Pin<Box<MyState>>>, mut client: mqtt::client::EspAsyncMqttClient) -> AppResult<()> {
     let mqtt_topic = state.config.read().await.mqtt_topic.clone();
 
     loop {
@@ -100,7 +93,7 @@ async fn mqtt_send(
     topic: &str,
     retain: bool,
     data: &str,
-) -> Result<MessageId, EspError> {
+) -> Result<mqtt::client::MessageId, EspError> {
     info!("MQTT sending {topic} {data}");
 
     let result = client
@@ -113,10 +106,7 @@ async fn mqtt_send(
     result
 }
 
-async fn event_loop(
-    _state: Arc<Pin<Box<MyState>>>,
-    mut conn: mqtt::client::EspAsyncMqttConnection,
-) -> anyhow::Result<()> {
+async fn event_loop(_state: Arc<Pin<Box<MyState>>>, mut conn: mqtt::client::EspAsyncMqttConnection) -> AppResult<()> {
     while let Ok(notification) = Box::pin(conn.next()).await {
         info!("MQTT received: {:?}", notification.payload());
     }

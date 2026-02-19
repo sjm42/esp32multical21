@@ -1,8 +1,5 @@
 // state.rs
 
-use esp_idf_svc::nvs;
-use tokio::sync::RwLock;
-
 use crate::*;
 
 pub struct MyState {

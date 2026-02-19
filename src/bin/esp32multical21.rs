@@ -5,12 +5,8 @@
 use esp32multical21::*;
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
-    hal::{gpio, spi::SpiDeviceDriver},
-    nvs,
-    ota::EspOta,
     ping,
     timer::EspTaskTimerService,
-    wifi::WifiDriver,
 };
 use esp_idf_sys::esp;
 
@@ -68,7 +64,7 @@ fn main() -> anyhow::Result<()> {
 
     let peripherals = Peripherals::take()?;
     let pins = peripherals.pins;
-    let button = gpio::PinDriver::input(pins.gpio9.downgrade_input())?;
+    let button = PinDriver::input(pins.gpio9.downgrade_input())?;
 
     // SPI pins: GPIO4=SCK, GPIO6=MOSI, GPIO5=MISO, GPIO7=CS
     let driver = spi::SpiDriver::new(
@@ -79,10 +75,10 @@ fn main() -> anyhow::Result<()> {
         &spi::SpiDriverConfig::new(),
     )?;
     let spi_cfg = spi::config::Config::new().baudrate(4.MHz().into());
-    let dev = SpiDeviceDriver::new(&driver, Some(pins.gpio7), &spi_cfg)?;
+    let dev = spi::SpiDeviceDriver::new(&driver, Some(pins.gpio7), &spi_cfg)?;
 
     // GDO0 on GPIO10
-    let gdo0 = gpio::PinDriver::input(pins.gpio10.downgrade_input())?;
+    let gdo0 = PinDriver::input(pins.gpio10.downgrade_input())?;
 
     // Create CC1101 radio
     let radio = Cc1101Radio::new(dev, gdo0);
@@ -120,7 +116,7 @@ fn main() -> anyhow::Result<()> {
 async fn poll_reset(
     mut state: Arc<Pin<Box<MyState>>>,
     button: PinDriver<'_, AnyInputPin, Input>,
-) -> anyhow::Result<()> {
+) -> AppResult<()> {
     let mut uptime: usize = 0;
     loop {
         sleep(Duration::from_secs(2)).await;
@@ -141,7 +137,7 @@ async fn poll_reset(
 async fn reset_button<'a>(
     state: &mut Arc<std::pin::Pin<Box<MyState>>>,
     button: &PinDriver<'a, AnyInputPin, Input>,
-) -> anyhow::Result<()> {
+) -> AppResult<()> {
     let mut reset_cnt = CONFIG_RESET_COUNT;
 
     while button.is_low() {
@@ -164,7 +160,7 @@ async fn reset_button<'a>(
     Ok(())
 }
 
-async fn pinger(state: Arc<Pin<Box<MyState>>>) -> anyhow::Result<()> {
+async fn pinger(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
     loop {
         sleep(Duration::from_secs(300)).await;
 

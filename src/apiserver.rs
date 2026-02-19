@@ -1,7 +1,5 @@
 // apiserver.rs
 
-use std::any::Any;
-
 use axum::{
     body::Body, extract::{Form, State},
     http::{header, Response, StatusCode},
@@ -12,11 +10,10 @@ use axum::{
 };
 pub use axum_macros::debug_handler;
 use embedded_svc::http::client::Client as HttpClient;
-use esp_idf_svc::{http::client::EspHttpConnection, io, ota::EspOta};
 
 use crate::*;
 
-pub async fn run_api_server(state: Arc<Pin<Box<MyState>>>) -> anyhow::Result<()> {
+pub async fn run_api_server(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
     loop {
         if *state.wifi_up.read().await {
             break;

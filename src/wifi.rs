@@ -1,13 +1,6 @@
 // wifi.rs
 
 use embedded_svc::wifi::{ClientConfiguration, Configuration};
-use esp_idf_svc::{
-    eventloop::{EspEventLoop, System},
-    ipv4,
-    netif::{self, EspNetif},
-    timer::{EspTimerService, Task},
-    wifi::{AsyncWifi, EspWifi, WifiDriver},
-};
 
 use crate::*;
 
@@ -22,7 +15,7 @@ impl<'a> WifiLoop<'a> {
         wifidriver: WifiDriver<'_>,
         sysloop: EspEventLoop<System>,
         timer: EspTimerService<Task>,
-    ) -> anyhow::Result<()> {
+    ) -> AppResult<()> {
         info!("Initializing Wi-Fi...");
 
         let ipv4_config = if self.state.config.read().await.v4dhcp {
@@ -75,7 +68,7 @@ impl<'a> WifiLoop<'a> {
         Box::pin(self.stay_connected()).await
     }
 
-    pub async fn configure(&mut self) -> anyhow::Result<()> {
+    pub async fn configure(&mut self) -> AppResult<()> {
         info!("WiFi setting credentials...");
         let wifi = self.wifi.as_mut().unwrap();
         wifi.set_configuration(&Configuration::Client(ClientConfiguration {
@@ -90,15 +83,15 @@ impl<'a> WifiLoop<'a> {
         Ok(Box::pin(wifi.start()).await?)
     }
 
-    pub async fn initial_connect(&mut self) -> anyhow::Result<()> {
+    pub async fn initial_connect(&mut self) -> AppResult<()> {
         self.do_connect_loop(true).await
     }
 
-    pub async fn stay_connected(mut self) -> anyhow::Result<()> {
+    pub async fn stay_connected(mut self) -> AppResult<()> {
         self.do_connect_loop(false).await
     }
 
-    async fn do_connect_loop(&mut self, initial: bool) -> anyhow::Result<()> {
+    async fn do_connect_loop(&mut self, initial: bool) -> AppResult<()> {
         let wifi = self.wifi.as_mut().unwrap();
         loop {
             // Wait for disconnect before trying to connect again.  This loop ensures
@@ -121,7 +114,7 @@ impl<'a> WifiLoop<'a> {
                     // only exit here if this is initial connection
                     // otherwise, keep trying
                     if initial {
-                        bail!(e);
+                        return Err(e.into());
                     }
                 }
             }

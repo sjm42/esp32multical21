@@ -1,7 +1,6 @@
 // config.rs
 
-use crc::{Crc, CRC_32_ISCSI};
-use esp_idf_svc::nvs;
+use crc::{CRC_32_ISCSI, Crc};
 
 use crate::*;
 
@@ -54,7 +53,7 @@ impl Default for MyConfig {
 
             mqtt_enable: false,
             mqtt_url: "mqtt://mqtt.local:1883".into(),
-            mqtt_topic: "esp32temp".into(),
+            mqtt_topic: "watermeter".into(),
 
             meter_id: String::new(),
             meter_key: String::new(),
@@ -125,29 +124,18 @@ impl MyConfig {
         }
     }
 
-    pub fn to_nvs(&self, nvs: &mut nvs::EspNvs<nvs::NvsDefault>) -> anyhow::Result<()> {
+    pub fn to_nvs(&self, nvs: &mut nvs::EspNvs<nvs::NvsDefault>) -> AppResult<()> {
         let mut nvsbuf = [0u8; NVS_BUF_SIZE];
         let crc = Crc::<u32>::new(&CRC_32_ISCSI);
         let digest = crc.digest();
-        let nvsdata = match postcard::to_slice_crc32(self, &mut nvsbuf, digest) {
-            Ok(d) => d,
-            Err(e) => {
-                let estr = format!("Cannot encode config to buffer {e:?}");
-                bail!("{estr}");
-            }
-        };
+        let nvsdata = postcard::to_slice_crc32(self, &mut nvsbuf, digest)
+            .map_err(|e| AppError::Message(format!("Cannot encode config to buffer {e:?}")))?;
         info!("Encoded config to {sz} bytes. Saving to nvs...", sz = nvsdata.len());
 
-        match nvs.set_raw(CONFIG_NAME, nvsdata) {
-            Ok(_) => {
-                info!("Config saved.");
-                Ok(())
-            }
-            Err(e) => {
-                let estr = format!("Cannot save to nvs: {e:?}");
-                bail!("{estr}");
-            }
-        }
+        nvs.set_raw(CONFIG_NAME, nvsdata)
+            .map_err(|e| AppError::Message(format!("Cannot save to nvs: {e:?}")))?;
+        info!("Config saved.");
+        Ok(())
     }
 }
 

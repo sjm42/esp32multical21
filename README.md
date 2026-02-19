@@ -78,8 +78,8 @@ Device configuration is persisted in NVS (Non-Volatile Storage) as a Postcard-se
 | `v4gw`        | Gateway                                  | 0.0.0.0        |
 | `dns1`/`dns2` | DNS servers                              | 0.0.0.0        |
 | `mqtt_enable` | Enable MQTT publishing                   | false          |
-| `mqtt_url`    | MQTT broker URL                          | (empty)        |
-| `mqtt_topic`  | MQTT topic prefix                        | (empty)        |
+| `mqtt_url`    | MQTT broker URL                          | `mqtt://mqtt.local:1883` |
+| `mqtt_topic`  | MQTT topic prefix                        | `esp32temp`    |
 | `meter_id`    | Target meter serial (8 hex chars)        | (empty)        |
 | `meter_key`   | AES-128 decryption key (32 hex chars)    | (empty)        |
 
@@ -164,7 +164,7 @@ ota_1,    app,  ota_1, ,        1984K
 - **Reset button**: Hold GPIO9 low for 5 seconds to factory-reset configuration and reboot
 - **WiFi watchdog**: If initial WiFi connection fails within 30 seconds, the device reboots
 - **Ping watchdog**: Every 5 minutes, pings the gateway 3 times. If all fail, reboots
-- **Radio watchdog**: If no packet is received for 5 minutes, the CC1101 is reinitialized
+- **Radio watchdog**: If no packet is received for 10 minutes, the CC1101 is reinitialized
 - **OTA rollback**: If new firmware fails to mark itself valid, the bootloader reverts to the previous slot
 
 ## Build Configuration
@@ -192,7 +192,7 @@ The web UI polls `/uptime` and `/meter` every 30 seconds and renders a live dash
 
 ## MQTT
 
-When enabled, the device connects to the configured MQTT broker and publishes every 60 seconds when new data is available:
+When enabled, the device connects to the configured MQTT broker and publishes whenever new meter data is available (checked every 10 seconds):
 
 - **`{topic}/uptime`** — `{"uptime": <seconds>}`
 - **`{topic}/meter`** — `{"total_m3": <f32>, "target_m3": <f32>, "flow_temp": <u8>, "ambient_temp": <u8>, "info_codes": <u8>, "timestamp": <i64>, "timestamp_s": <String>}`
@@ -233,8 +233,8 @@ connects to WiFi, then runs six concurrent tasks under `tokio::select!`:
 │                    Tokio Runtime (single-threaded)               │
 │                                                                 │
 │  poll_reset()     Uptime counter, factory-reset button (2s)     │
-│  poll_sensors()   CC1101 RX → wMBus decrypt → meter parse       │
-│  run_mqtt()       Publish meter data to MQTT broker (5s)        │
+│  read_meter()     CC1101 RX → wMBus decrypt → meter parse       │
+│  run_mqtt()       Publish meter data to MQTT broker (10s check) │
 │  run_api_server() Axum HTTP server (port 80)                    │
 │  wifi_loop.run()  WiFi connect/reconnect manager                │
 │  pinger()         Ping gateway every 5 min, reboot on failure   │
@@ -253,17 +253,17 @@ All tasks share a single `Arc<Pin<Box<MyState>>>` instance with `RwLock`-protect
 
 | File               | Purpose                                            |
 |--------------------|----------------------------------------------------|
-| `bin/esp32multical21.rs` | Entry point, hardware init, task orchestration |
-| `lib.rs`           | Re-exports, common types, `FW_VERSION` constant    |
-| `state.rs`         | `MyState` struct — shared concurrent state         |
-| `config.rs`        | `MyConfig` struct — NVS serialization/deserialization |
-| `cc1101.rs`        | CC1101 SPI driver — register config, packet RX     |
-| `wmbus.rs`         | wMBus C1 frame parsing, AES-128-CTR decryption     |
-| `multical21.rs`    | Kamstrup Multical 21 payload parser                |
-| `measure.rs`       | Sensor polling loop — ties radio to state          |
-| `mqtt.rs`          | MQTT client lifecycle and publishing               |
-| `apiserver.rs`     | Axum HTTP routes, web UI, OTA updates              |
-| `wifi.rs`          | WiFi connection/reconnection state machine         |
+| `src/bin/esp32multical21.rs` | Entry point, hardware init, task orchestration |
+| `src/lib.rs`       | Re-exports, common types, `FW_VERSION` constant    |
+| `src/state.rs`     | `MyState` struct — shared concurrent state         |
+| `src/config.rs`    | `MyConfig` struct — NVS serialization/deserialization |
+| `src/radio.rs`     | CC1101 SPI driver — register config, packet RX     |
+| `src/wmbus.rs`     | wMBus C1 frame parsing, AES-128-CTR decryption     |
+| `src/multical21.rs`| Kamstrup Multical 21 payload parser                |
+| `src/measure.rs`   | Sensor polling loop — ties radio to state          |
+| `src/mqtt.rs`      | MQTT client lifecycle and publishing               |
+| `src/apiserver.rs` | Axum HTTP routes, web UI, OTA updates              |
+| `src/wifi.rs`      | WiFi connection/reconnection state machine         |
 
 ### Startup Sequence
 
