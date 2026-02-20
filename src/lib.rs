@@ -54,8 +54,10 @@ pub enum AppError {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MeterReading {
+    pub total_l: u32,
+    pub month_start_l: u32,
     pub total_m3: f32,
-    pub target_m3: f32,
+    pub month_start_m3: f32,
     pub flow_temp: u8,
     pub ambient_temp: u8,
     pub info_codes: u8,
@@ -96,6 +98,9 @@ pub use mqtt_sender::*;
 
 mod apiserver;
 pub use apiserver::*;
+
+mod esphome_api;
+pub use esphome_api::*;
 
 mod wifi;
 pub use wifi::*;

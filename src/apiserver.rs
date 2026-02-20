@@ -21,7 +21,7 @@ pub async fn run_api_server(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
         sleep(Duration::from_secs(1)).await;
     }
 
-    let listen = format!("0.0.0.0:{}", state.config.read().await.port);
+    let listen = format!("0.0.0.0:{}", DEFAULT_API_PORT);
     let addr = listen.parse::<net::SocketAddr>()?;
 
     let app = Router::new()

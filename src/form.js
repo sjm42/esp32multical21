@@ -3,10 +3,10 @@ var postCfgDataAsJson =
                url, formData
            }) => {
         const formObj = Object.fromEntries(formData.entries());
-        formObj.port = parseInt(formObj.port);
         formObj.wifi_wpa2ent = (formObj.wifi_wpa2ent === "on");
         formObj.v4dhcp = (formObj.v4dhcp === "on");
         formObj.v4mask = parseInt(formObj.v4mask);
+        formObj.esphome_enable = (formObj.esphome_enable === "on");
         formObj.mqtt_enable = (formObj.mqtt_enable === "on");
         if (!formObj.wifi_username) formObj.wifi_username = "";
         if (!formObj.wifi_wpa2ent) formObj.wifi_username = "";
@@ -66,8 +66,8 @@ async function update_meter() {
         const json = await response.json();
         if (json.total_m3 !== undefined) {
             o.innerHTML = "<table>" +
-                "<tr><td>Total:</td><td>" + json.total_m3.toFixed(3) + " m3</td></tr>" +
-                "<tr><td>Target:</td><td>" + json.target_m3.toFixed(3) + " m3</td></tr>" +
+                "<tr><td>Total:</td><td>" + json.total_m3.toFixed(3) + " m3 (" + json.total_l + " l)</td></tr>" +
+                "<tr><td>Month start:</td><td>" + json.month_start_m3.toFixed(3) + " m3 (" + json.month_start_l + " l)</td></tr>" +
                 "<tr><td>Flow temp:</td><td>" + json.flow_temp + " &deg;C</td></tr>" +
                 "<tr><td>Ambient temp:</td><td>" + json.ambient_temp + " &deg;C</td></tr>" +
                 "<tr><td>Info codes:</td><td>0x" + json.info_codes.toString(16).padStart(2, '0') + "</td></tr>" +

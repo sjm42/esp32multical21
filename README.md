@@ -2,7 +2,7 @@
 
 A Rust embedded firmware for ESP32-C3 (or ESP32-S2) that receives encrypted wireless M-Bus (wMBus)
 telegrams from Kamstrup Multical 21 water meters via a CC1101 868 MHz RF module.
-Decoded meter readings are exposed through a web UI, REST API, and MQTT.
+Decoded meter readings are exposed through a web UI, REST API, MQTT, and optional ESPHome native API.
 
 Runs on Tokio async runtime on top of FreeRTOS.
 
@@ -27,6 +27,7 @@ Runs on Tokio async runtime on top of FreeRTOS.
 
 The CC1101 is configured for wMBus C1 mode: 868.3 MHz, 2-FSK modulation, sync word `0x543D`,
 48-byte packets. GDO0 asserts on sync word detection and deasserts when the packet is complete.
+Firmware waits for this as a GPIO interrupt-driven `rising -> falling` edge pair.
 
 ## Building & Flashing
 
@@ -39,7 +40,7 @@ The CC1101 is configured for wMBus C1 mode: 868.3 MHz, 2-FSK modulation, sync wo
 ### Commands
 
 ```bash
-source env.sh                          # Set WIFI_SSID, WIFI_PASS, MCU, API_PORT
+source env.sh                          # Set WIFI_SSID, WIFI_PASS, MCU
 
 cargo build                            # Debug build
 cargo build -r                         # Release build (opt-level=z, fat LTO)
@@ -47,6 +48,7 @@ cargo clippy                           # Lint
 
 cargo run -r -- --baud 921600          # Build release + flash + monitor
 ./flash                                # Shortcut for the above
+./make_ota_image                       # Build release + export firmware.bin
 ```
 
 The flash runner (configured in `.cargo/config.toml`) uses `espflash` with the dual-OTA partition table and erases OTA metadata on each fresh flash:
@@ -65,11 +67,13 @@ The default feature is `esp32c3` (RISC-V target `riscv32imc-esp-espidf`).
 
 ## Configuration
 
-Device configuration is persisted in NVS (Non-Volatile Storage) as a Postcard-serialized blob with CRC-32 integrity checking.
+Device configuration is persisted in NVS (Non-Volatile Storage) as a single Postcard-serialized blob
+with CRC-32 integrity checking (`CRC_32_ISCSI`), stored under key `cfg`.
+The serialized config blob is limited to 256 bytes.
+If the NVS entry is missing or fails CRC/deserialization checks, defaults are written automatically on boot.
 
 | Parameter     | Description                              | Default        |
 |---------------|------------------------------------------|----------------|
-| `port`        | HTTP server port                         | 80             |
 | `wifi_ssid`   | WiFi SSID                                | from `env.sh`  |
 | `wifi_pass`   | WiFi password                            | from `env.sh` / empty |
 | `wifi_wpa2ent`| Use WPA2-Enterprise auth                 | false          |
@@ -79,6 +83,7 @@ Device configuration is persisted in NVS (Non-Volatile Storage) as a Postcard-se
 | `v4mask`      | Subnet mask bits (0-30)                  | 0              |
 | `v4gw`        | Gateway                                  | 0.0.0.0        |
 | `dns1`/`dns2` | DNS servers                              | 0.0.0.0        |
+| `esphome_enable` | Enable ESPHome native API listener   | false          |
 | `mqtt_enable` | Enable MQTT publishing                   | false          |
 | `mqtt_url`    | MQTT broker URL                          | `mqtt://mqtt.local:1883` |
 | `mqtt_topic`  | MQTT topic prefix                        | `watermeter`   |
@@ -89,7 +94,7 @@ Configuration can be changed through the web UI at `http://<device-ip>/` or via 
 Changes take effect after an automatic reboot.
 `POST /conf` and `GET /reset_conf` return JSON in the form `{"ok": <bool>, "message": "<text>"}`.
 
-Environment variables `WIFI_SSID`, `WIFI_PASS`, and `API_PORT` provide build-time defaults.
+Environment variables `WIFI_SSID` and `WIFI_PASS` provide build-time defaults.
 
 ## Home Assistant integration via MQTT
 
@@ -111,6 +116,13 @@ sensor:
     value_template: "{{ value_json.total_m3 }}"
     device_class: water
     state_class: total_increasing
+  - name: "Water Meter Month Start"
+    unique_id: "water_month_start"
+    state_topic: "watermeter/meter"
+    unit_of_measurement: "m³"
+    value_template: "{{ value_json.month_start_m3 }}"
+    device_class: water
+    state_class: measurement
   - name: "Water Meter Room Temperature"
     unique_id: "water_temp_room"
     state_topic: "watermeter/meter"
@@ -130,7 +142,7 @@ sensor:
 
 ## HTTP API
 
-Served by Axum on port 80 (configurable).
+Served by Axum on port 80.
 
 | Method  | Path           | Description                          |
 |---------|----------------|--------------------------------------|
@@ -139,8 +151,10 @@ Served by Axum on port 80 (configurable).
 | GET     | `/conf`        | `{"ok": true, "config": {...}}`     |
 | POST    | `/conf`        | Save config and reboot. JSON response: `{"ok": <bool>, "message": "<text>"}` |
 | GET     | `/reset_conf`  | Factory reset and reboot. JSON response: `{"ok": <bool>, "message": "<text>"}` |
-| GET     | `/meter`       | Current meter reading as JSON        |
+| GET     | `/meter`       | Current meter reading as JSON (or `{"status":"no reading"}` if empty) |
 | POST    | `/fw`          | OTA firmware update (form field `url`) |
+
+CORS preflight (`OPTIONS`) is implemented for `/conf` and `/fw`.
 
 ## OTA Firmware Update
 
@@ -166,6 +180,7 @@ ota_1,    app,  ota_1, ,        1984K
 
 - **Reset button**: Hold GPIO9 low for 5 seconds to factory-reset configuration and reboot
 - **WiFi watchdog**: If initial WiFi connection fails within 30 seconds, the device reboots
+- **NTP watchdog**: If SNTP sync does not complete within ~60 seconds after WiFi, the device reboots
 - **Ping watchdog**: Every 5 minutes, pings the gateway 3 times. If all fail, reboots
 - **Radio watchdog**: If no packet is received for 10 minutes, the CC1101 is reinitialized
 - **OTA rollback**: If new firmware fails to mark itself valid, the bootloader reverts to the previous slot
@@ -181,8 +196,10 @@ ota_1,    app,  ota_1, ,        1984K
 
 ```json
 {
+   "total_l": 362705,
+   "month_start_l": 360093,
    "total_m3": 362.705,
-   "target_m3": 360.093,
+   "month_start_m3": 360.093,
    "flow_temp": 1,
    "ambient_temp": 10,
    "info_codes": 97,
@@ -195,23 +212,34 @@ The web UI polls `/uptime` and `/meter` every 30 seconds and renders a live dash
 
 ## MQTT
 
-When enabled, the device connects to the configured MQTT broker and publishes whenever new meter data is available (checked every 10 seconds):
+When enabled, the device connects to the configured MQTT broker and publishes on new meter data (checked every 10 seconds):
 
 - **`{topic}/uptime`** — `{"uptime": <seconds>}`
-- **`{topic}/meter`** — `{"total_m3": <f32>, "target_m3": <f32>, "flow_temp": <u8>, "ambient_temp": <u8>, "info_codes": <u8>, "timestamp": <i64>, "timestamp_s": <String>}`
+- **`{topic}/meter`** — `{"total_l": <u32>, "month_start_l": <u32>, "total_m3": <f32>, "month_start_m3": <f32>, "flow_temp": <u8>, "ambient_temp": <u8>, "info_codes": <u8>, "timestamp": <i64>, "timestamp_s": <String>}`
 
-Volumes are published in cubic meters (converted from liters).
-The MQTT client ID is derived from the device MAC address: `esp32multical21-XX:XX:XX:XX:XX:XX`.
+Volumes are published both in liters and cubic meters.
+MQTT uses QoS 1 for publishes; `{topic}/meter` is retained and `{topic}/uptime` is non-retained.
+The MQTT client ID is derived from the device MAC address: `esp32multical21_XXXXXXXXXXXX`.
+
+## ESPHome Native API
+
+When `esphome_enable=true`, the firmware opens an ESPHome-compatible native API listener on TCP port `6053`.
+
+- Plaintext-only implementation (Noise encryption key setup is rejected)
+- Responds to hello/device-info/list-entities/subscribe-states/ping/disconnect flows
+- Exposes `uptime` plus meter fields (`total_l`, `month_start_l`, `total_m3`, `month_start_m3`, temperatures, info codes, timestamps)
+- `timestamp_s` is exported as a text sensor; numeric fields are exported as sensors
 
 ## wMBus Protocol
 
 The CC1101 radio listens for wireless M-Bus C1 mode telegrams at 868.3 MHz. When a packet arrives:
 
-1. **Sync detection** — CC1101 matches the C1 preamble `0x543D`
-2. **Meter ID filtering** — Only packets matching the configured meter serial are processed
-3. **AES-128-CTR decryption** — The 16-byte IV is constructed from the frame header fields (manufacturer, address, communication control, session number)
-4. **CRC-16 validation** — EN 13757 polynomial `0x3D65` verifies payload integrity
-5. **Payload parsing** — Multical 21 compact (CI `0x79`) or long (CI `0x78`) frame format extracts volume, temperature, and status data
+1. **Edge-triggered RX complete** — Firmware waits for GDO0 `rising -> falling` edges (`sync -> packet complete`)
+2. **Sync detection** — CC1101 matches the C1 preamble `0x543D`
+3. **Meter ID filtering** — Only packets matching the configured meter serial are processed
+4. **AES-128-CTR decryption** — The 16-byte IV is constructed from the frame header fields (manufacturer, address, communication control, session number)
+5. **CRC-16 validation** — EN 13757 polynomial `0x3D65` verifies payload integrity
+6. **Payload parsing** — Multical 21 compact (CI `0x79`) or long (CI `0x78`) frame format extracts volume, temperature, and status data
 
 ### Frame Structure
 
@@ -220,7 +248,7 @@ Over the air:
 [Preamble 0x543D] [L] [C] [M-field 2B] [A-field 6B] [CI] [CC] [ACC] [SN 4B] [Encrypted Payload] [CRC]
 
 After decryption:
-[CRC-16 2B] [CI] [Info] ... [Total Volume 4B] ... [Target Volume 4B] ... [Flow Temp] [Ambient Temp]
+[CRC-16 2B] [CI] [Info] ... [Total Volume 4B] ... [Month-start Volume 4B] ... [Flow Temp] [Ambient Temp]
 ```
 
 The meter ID is encoded in little-endian BCD on the wire
@@ -229,7 +257,7 @@ The meter ID is encoded in little-endian BCD on the wire
 ## Architecture
 
 The binary entry point (`src/bin/esp32multical21.rs`) initializes hardware, loads config from NVS,
-connects to WiFi, then runs six concurrent tasks under `tokio::select!`:
+and runs seven concurrent tasks under `tokio::select!` (service tasks wait until WiFi is up):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -239,6 +267,7 @@ connects to WiFi, then runs six concurrent tasks under `tokio::select!`:
 │  read_meter()     CC1101 RX → wMBus decrypt → meter parse       │
 │  run_mqtt()       Publish meter data to MQTT broker (10s check) │
 │  run_api_server() Axum HTTP server (port 80)                    │
+│  run_esphome_api() ESPHome native API server (port 6053)         │
 │  wifi_loop.run()  WiFi connect/reconnect manager                │
 │  pinger()         Ping gateway every 5 min, reboot on failure   │
 └─────────────────────────────────────────────────────────────────┘
@@ -266,6 +295,7 @@ All tasks share a single `Arc<Pin<Box<MyState>>>` instance with `RwLock`-protect
 | `src/measure.rs`   | Sensor polling loop — ties radio to state          |
 | `src/mqtt_sender.rs` | MQTT client lifecycle and publishing             |
 | `src/apiserver.rs` | Axum HTTP routes, web UI, OTA updates              |
+| `src/esphome_api.rs` | ESPHome native API implementation                |
 | `src/wifi.rs`      | WiFi connection/reconnection state machine         |
 
 ### Startup Sequence
@@ -275,7 +305,7 @@ All tasks share a single `Arc<Pin<Box<MyState>>>` instance with `RwLock`-protect
 3. Initialize OTA subsystem, mark running slot valid (prevents rollback)
 4. Configure SPI bus and CC1101 radio, set up GPIO for reset button
 5. Create WiFi driver and shared `MyState`
-6. Launch Tokio runtime with six concurrent tasks
+6. Launch Tokio runtime with seven concurrent tasks
 7. WiFi connects (30s timeout, reboots on failure), then all services start
 
 

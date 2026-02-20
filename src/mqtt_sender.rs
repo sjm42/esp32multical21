@@ -19,7 +19,7 @@ pub async fn run_mqtt(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
     }
 
     let url = state.config.read().await.mqtt_url.clone();
-    let myid = state.myid.read().await.clone();
+    let myid = state.my_id.read().await.clone();
 
     sleep(Duration::from_secs(10)).await;
 
@@ -71,17 +71,6 @@ async fn data_sender(state: Arc<Pin<Box<MyState>>>, mut client: mqtt::client::Es
         // Publish meter reading if available
         if let Some(ref reading) = *state.latest_data.read().await {
             let topic = format!("{mqtt_topic}/meter");
-            /*
-            let mqtt_data = format!(
-                "{{ \"total_m3\": {:.3}, \"target_m3\": {:.3}, \"flow_temp\": {}, \"ambient_temp\": {}, \"info_codes\": {}, \"uptime\": {} }}",
-                reading.total_m3 as f64 / 1000.0,
-                reading.target_m3 as f64 / 1000.0,
-                reading.flow_temp,
-                reading.ambient_temp,
-                reading.info_codes,
-                uptime
-            );
-            */
             let mqtt_data = serde_json::to_string(&reading)?;
             Box::pin(mqtt_send(&mut client, &topic, true, &mqtt_data)).await?;
         }

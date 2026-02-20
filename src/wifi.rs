@@ -40,8 +40,13 @@ impl<'a> WifiLoop<'a> {
         })?;
 
         let mac = net_if.get_mac()?;
-        *self.state.myid.write().await = format!(
-            "esp32multical21-{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
+        *self.state.my_id.write().await = format!(
+            "esp32multical21_{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
+            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+        );
+        *self.state.my_mac.write().await = mac;
+        *self.state.my_mac_s.write().await = format!(
+            "{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
         );
 

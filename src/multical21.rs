@@ -41,9 +41,13 @@ pub fn parse_multical21(data: &[u8]) -> Option<MeterReading> {
                 //   [13..17]: target volume (u32 LE, liters)
                 //   [17]:     flow temperature
                 //   [18]:     ambient temperature
+                let total_l = u32::from_le_bytes([data[9], data[10], data[11], data[12]]);
+                let month_start_l = u32::from_le_bytes([data[13], data[14], data[15], data[16]]);
                 Some(MeterReading {
-                    total_m3: u32::from_le_bytes([data[9], data[10], data[11], data[12]]) as f32 / 1000.0,
-                    target_m3: u32::from_le_bytes([data[13], data[14], data[15], data[16]]) as f32 / 1000.0,
+                    total_l,
+                    month_start_l,
+                    total_m3: total_l as f32 / 1000.0,
+                    month_start_m3: month_start_l as f32 / 1000.0,
                     flow_temp: data[17],
                     ambient_temp: data[18],
                     info_codes: data[4],
@@ -64,9 +68,13 @@ pub fn parse_multical21(data: &[u8]) -> Option<MeterReading> {
                 //   [16..20]: target volume (u32 LE, liters)
                 //   [23]:     flow temperature
                 //   [29]:     ambient temperature
+                let total_l = u32::from_le_bytes([data[10], data[11], data[12], data[13]]);
+                let month_start_l = u32::from_le_bytes([data[16], data[17], data[18], data[19]]);
                 Some(MeterReading {
-                    total_m3: u32::from_le_bytes([data[10], data[11], data[12], data[13]]) as f32 / 1000.0,
-                    target_m3: u32::from_le_bytes([data[16], data[17], data[18], data[19]]) as f32 / 1000.0,
+                    total_l,
+                    month_start_l,
+                    total_m3: total_l as f32 / 1000.0,
+                    month_start_m3: month_start_l as f32 / 1000.0,
                     flow_temp: data[23],
                     ambient_temp: data[29],
                     info_codes: data[4],

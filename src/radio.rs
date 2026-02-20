@@ -134,24 +134,24 @@ impl<'a> Cc1101Radio<'a> {
         // Go to IDLE
         self.strobe(CcCommand::SIDLE)?;
         // Wait for IDLE state
-        for _ in 0..50 {
+        for _ in 0..35 {
             let state = self.read_status(CcStatus::MARCSTATE)? & 0x1F;
             if state == MARC_IDLE {
                 break;
             }
-            FreeRtos::delay_ms(2);
+            FreeRtos::delay_ms(3);
         }
         // Flush RX FIFO
         self.strobe(CcCommand::SFRX)?;
         // Start RX
         self.strobe(CcCommand::SRX)?;
         // Wait for RX state
-        for _ in 0..50 {
+        for _ in 0..35 {
             let state = self.read_status(CcStatus::MARCSTATE)? & 0x1F;
             if state == MARC_RX {
                 break;
             }
-            FreeRtos::delay_ms(2);
+            FreeRtos::delay_ms(3);
         }
         Ok(())
     }
@@ -236,18 +236,12 @@ impl<'a> Cc1101Radio<'a> {
     }
 
     async fn poll_gdo0(&mut self) -> Result<Vec<u8>, Cc1101RadioError> {
-        // Poll GDO0 for high→low transition indicating packet received
-        // GDO0=0x06: asserts on sync word, deasserts when packet ends (IDLE)
+        // Require GDO0 high->low per packet:
+        // IOCFG0=0x06 asserts on sync word, then deasserts when packet ends (IDLE).
         loop {
-            // Wait for GDO0 to go high (sync detected)
-            while self.gdo0.is_low() {
-                sleep(Duration::from_millis(2)).await;
-            }
-
-            // GDO0 is high = sync word detected, wait for it to go low (packet complete)
-            while self.gdo0.is_high() {
-                sleep(Duration::from_millis(2)).await;
-            }
+            // If we enter while already high, we are mid-packet. Skip this wait.
+            self.gdo0.wait_for_rising_edge().await?;
+            self.gdo0.wait_for_falling_edge().await?;
 
             // Packet received, radio is now in IDLE
             // Read RXBYTES to see how much data
