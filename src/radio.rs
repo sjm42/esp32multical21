@@ -38,10 +38,14 @@ const WMBUS_CHANBW_HZ: u64 = 325_000; // MDMCFG4.CHANBW = 0b01_01
 const WMBUS_DATA_RATE_BPS: u64 = 103_149; // MDMCFG3/4 = 0x04/0x5C
 const WMBUS_DEVIATION_HZ: u64 = 34_913; // DEVIATN = 0x44
 
+// https://www.ti.com/lit/ds/symlink/cc1101.pdf
+
 const LEGACY_PROFILE: &[(CcConfig, u8)] = &[
+    // (CcConfig::FIFOTHR, 0x00),
+    // (CcConfig::IOCFG0, 0x06),
+    (CcConfig::FIFOTHR, 0x01),
+    (CcConfig::IOCFG0, 0x01),
     (CcConfig::IOCFG2, 0x2E),
-    (CcConfig::IOCFG0, 0x06),
-    (CcConfig::FIFOTHR, 0x00),
     (CcConfig::SYNC1, 0x54),
     (CcConfig::SYNC0, 0x3D),
     (CcConfig::PKTLEN, 0x30),
@@ -220,12 +224,6 @@ impl<'a> Cc1101Radio<'a> {
 
     /// Wait for a wMBus packet. Returns `Ok(None)` on watchdog timeout.
     pub async fn wait_for_packet(&mut self) -> Result<Option<Vec<u8>>, Cc1101RadioError> {
-        // Wait for GDO0 to go high (sync detected) then low (packet done)
-        // With IOCFG0=0x06 and MCSM1=0x00: GDO0 asserts on sync, deasserts when
-        // radio goes to IDLE after packet reception.
-        //
-        // We use a watchdog timeout to restart the radio if stuck.
-
         match Box::pin(timeout(Duration::from_secs(WATCHDOG_SECS), self.poll_gdo0())).await {
             Ok(packet) => Ok(Some(packet?)),
             Err(_) => {
@@ -236,15 +234,17 @@ impl<'a> Cc1101Radio<'a> {
     }
 
     async fn poll_gdo0(&mut self) -> Result<Vec<u8>, Cc1101RadioError> {
-        // Require GDO0 high->low per packet:
-        // IOCFG0=0x06 asserts on sync word, then deasserts when packet ends (IDLE).
+        // IOCFG0=0x01 and FIFOTHR=0x01: GDO0 rises when FIFO has at least 8 bytes
+        // IOCFG0=0x01 and FIFOTHR=0x0E: GDO0 rises when FIFO has at least 60 bytes
         loop {
-            // If we enter while already high, we are mid-packet. Skip this wait.
-            self.gdo0.wait_for_rising_edge().await?;
-            self.gdo0.wait_for_falling_edge().await?;
+            while self.gdo0.is_low() {
+                sleep(Duration::from_millis(100)).await;
+            }
+            // wait for the packet to be completely received
+            sleep(Duration::from_millis(10)).await;
 
-            // Packet received, radio is now in IDLE
-            // Read RXBYTES to see how much data
+            // Packet received, radio should now be in IDLE.
+            // Read RXBYTES to see how much data we got.
             let rx_bytes = self.read_status(CcStatus::RXBYTES)? & 0x7F;
             if rx_bytes == 0 {
                 error!("CC1101: GDO0 triggered but FIFO empty?");

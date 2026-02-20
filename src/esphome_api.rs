@@ -1,3 +1,5 @@
+// esphome_api.rs
+
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
@@ -128,7 +130,7 @@ pub async fn run_esphome_api(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
         if *state.wifi_up.read().await {
             break;
         }
-        sleep(Duration::from_secs(1)).await;
+        sleep(Duration::from_secs(3)).await;
     }
 
     let listen = format!("0.0.0.0:{ESPHOME_API_PORT}");
@@ -155,7 +157,7 @@ async fn handle_client(state: Arc<Pin<Box<MyState>>>, mut stream: TcpStream) -> 
     let mut last_sent = BTreeMap::<u32, EntityStateValue>::new();
 
     loop {
-        match Box::pin(timeout(Duration::from_millis(500), read_frame(&mut stream))).await {
+        match Box::pin(timeout(Duration::from_secs(60), read_frame(&mut stream))).await {
             Ok(Ok((msg_type_raw, payload))) => match ApiMessageType::try_from(msg_type_raw) {
                 Ok(ApiMessageType::HelloRequest) => {
                     if let Some((client_info, major, minor)) = parse_hello_request(&payload) {
@@ -171,39 +173,48 @@ async fn handle_client(state: Arc<Pin<Box<MyState>>>, mut stream: TcpStream) -> 
                     info!("ESPHome auth request ignored (password auth removed upstream)");
                 }
                 Ok(ApiMessageType::PingRequest) => {
+                    info!("ESPHome: sending ping response");
                     send_frame(&mut stream, ApiMessageType::PingResponse, &[]).await?;
                 }
                 Ok(ApiMessageType::DisconnectRequest) => {
+                    info!("ESPHome: recvd disconnect request");
                     send_frame(&mut stream, ApiMessageType::DisconnectResponse, &[]).await?;
                     return Ok(());
                 }
                 Ok(ApiMessageType::DeviceInfoRequest) => {
+                    info!("ESPHome: recvd device info request");
                     send_device_info_response(&state, &mut stream).await?;
                 }
                 Ok(ApiMessageType::ListEntitiesRequest) => {
+                    info!("ESPHome: recvd list entities request");
                     let latest = state.latest_data.read().await.clone();
                     entities = build_entity_defs(latest.as_ref());
                     send_list_entities_response(&mut stream, &entities).await?;
                 }
                 Ok(ApiMessageType::SubscribeStatesRequest) => {
                     state_subscribed = true;
+                    info!("ESPHome: recvd subscribe states");
                     Box::pin(send_state_updates(&state, &mut stream, &entities, &mut last_sent, true)).await?;
                 }
                 Ok(ApiMessageType::SubscribeHomeassistantServicesRequest)
                 | Ok(ApiMessageType::SubscribeHomeassistantStatesRequest) => {
                     // Home Assistant sends these by default; this firmware does not consume them.
+                    continue;
                 }
                 Ok(ApiMessageType::NoiseEncryptionSetKeyRequest) => {
                     // This implementation is plaintext-only. Report failure.
                     let mut payload = Vec::new();
                     pb_put_bool(1, false, &mut payload);
                     send_frame(&mut stream, ApiMessageType::NoiseEncryptionSetKeyResponse, &payload).await?;
+                    info!("ESPHome: responded NAK to encryption set key");
                 }
                 Ok(msg_type) => {
                     debug!("ESPHome API: unhandled message type {:?}", msg_type);
+                    continue;
                 }
                 Err(_) => {
                     debug!("ESPHome API: unhandled message type {msg_type_raw}");
+                    continue;
                 }
             },
             Ok(Err(e)) => {
@@ -214,6 +225,8 @@ async fn handle_client(state: Arc<Pin<Box<MyState>>>, mut stream: TcpStream) -> 
             }
             Err(_) => {
                 // timeout tick
+                info!("ESPHome API: tick");
+                // continue;
             }
         }
 
@@ -238,6 +251,7 @@ async fn send_hello_response(state: &Arc<Pin<Box<MyState>>>, stream: &mut TcpStr
     pb_put_string(3, &format!("esp32multical21 {FW_VERSION}"), &mut payload);
     pb_put_string(4, &device_name, &mut payload);
     send_frame(stream, ApiMessageType::HelloResponse, &payload).await?;
+    info!("ESPHome: sent hello response");
     Ok(())
 }
 
@@ -255,6 +269,7 @@ async fn send_device_info_response(state: &Arc<Pin<Box<MyState>>>, stream: &mut 
     pb_put_string(13, "Multical 21", &mut payload);
 
     send_frame(stream, ApiMessageType::DeviceInfoResponse, &payload).await?;
+    info!("ESPHome: sent device info response");
     Ok(())
 }
 
@@ -290,6 +305,7 @@ async fn send_list_entities_response(stream: &mut TcpStream, entities: &[EntityD
     }
 
     send_frame(stream, ApiMessageType::ListEntitiesDoneResponse, &[]).await?;
+    info!("ESPHome: sent list entities response");
     Ok(())
 }
 
@@ -354,7 +370,7 @@ async fn send_state_updates(
 
         last_sent.insert(entity.key, value);
     }
-
+    info!("ESPHome: sent state updates");
     Ok(())
 }
 
@@ -613,6 +629,7 @@ async fn send_frame(stream: &mut TcpStream, msg_type: ApiMessageType, payload: &
     put_varuint(payload.len() as u64, &mut frame);
     put_varuint(u64::from(msg_type.id()), &mut frame);
     frame.extend_from_slice(payload);
+    // info!("ESPHome: sending frame ({} bytes)", frame.len());
     stream.write_all(&frame).await
 }
 

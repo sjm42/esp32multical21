@@ -18,7 +18,7 @@ pub async fn run_api_server(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
         if *state.wifi_up.read().await {
             break;
         }
-        sleep(Duration::from_secs(1)).await;
+        sleep(Duration::from_secs(3)).await;
     }
 
     let listen = format!("0.0.0.0:{}", DEFAULT_API_PORT);

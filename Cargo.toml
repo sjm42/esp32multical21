@@ -2,7 +2,7 @@
 
 [package]
 name = "esp32multical21"
-version = "1.4.0"
+version = "1.4.2"
 authors = ["Sami J. Mäkinen <sjm@iki.fi>"]
 edition = "2024"
 

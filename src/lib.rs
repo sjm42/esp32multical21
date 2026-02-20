@@ -29,7 +29,7 @@ pub use log::*;
 pub use serde::{Deserialize, Serialize};
 pub use tokio::{
     sync::RwLock,
-    time::{Duration, sleep, timeout},
+    time::{sleep, timeout, Duration},
 };
 
 pub const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
