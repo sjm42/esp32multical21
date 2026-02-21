@@ -1,7 +1,7 @@
 # ESP32 Multical21
 
 A Rust embedded firmware for ESP32-C3 (primary target) that receives encrypted wireless M-Bus (wMBus)
-telegrams from Kamstrup Multical 21 water meters via a CC1101 868 MHz RF module.
+telegrams from Kamstrup Multical 21 water meters via a CC1101 sub-GHz RF module.
 Decoded meter readings are exposed through a web UI, REST API, MQTT, and optional ESPHome native API.
 
 Runs on Tokio async runtime on top of FreeRTOS.
@@ -26,14 +26,14 @@ Runs on Tokio async runtime on top of FreeRTOS.
 
 ### Pinout (ESP32-C3)
 
-| Pin    | Function            |
-|--------|---------------------|
-| GPIO4  | SPI SCK             |
-| GPIO5  | SPI MISO            |
-| GPIO6  | SPI MOSI            |
-| GPIO7  | SPI CS (CC1101)     |
-| GPIO10 | CC1101 GDO0         |
-| GPIO9  | Reset button (active low) |
+| Pin    | Function                             |
+|--------|--------------------------------------|
+| GPIO4  | SPI SCK                              |
+| GPIO5  | SPI MISO                             |
+| GPIO6  | SPI MOSI                             |
+| GPIO7  | SPI CS (CC1101)                      |
+| GPIO10 | CC1101 GDO0                          |
+| GPIO9  | Factory settings button (active low) |
 
 The CC1101 is configured for wMBus C1 mode: 868.950 MHz, 2-FSK modulation, sync word `0x543D`,
 48-byte packets. `GDO0` is polled in software; with `IOCFG0=0x01` and `FIFOTHR=0x01`, it rises when
