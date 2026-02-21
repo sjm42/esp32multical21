@@ -3,12 +3,12 @@
 use std::sync::atomic::Ordering;
 
 use axum::{
-    body::Body, extract::{rejection::JsonRejection, Form, State},
-    http::{header, Response, StatusCode},
+    Json, Router,
+    body::Body,
+    extract::{Form, State, rejection::JsonRejection},
+    http::{Response, StatusCode, header},
     response::{Html, IntoResponse},
     routing::*,
-    Json,
-    Router,
 };
 pub use axum_macros::debug_handler;
 use embedded_svc::http::client::Client as HttpClient;

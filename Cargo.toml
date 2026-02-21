@@ -2,15 +2,15 @@
 
 [package]
 name = "esp32multical21"
-version = "1.4.3"
+version = "1.4.4"
 authors = ["Sami J. Mäkinen <sjm@iki.fi>"]
 edition = "2024"
 
 
 [features]
-default = ["esp32c3"]
-esp32s = []
-esp32c3 = []
+default = ["esp32-c3"]
+esp32-c3 = []
+esp-wroom-32 = []
 
 
 [dependencies]

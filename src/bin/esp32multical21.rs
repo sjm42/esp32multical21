@@ -60,21 +60,39 @@ fn main() -> anyhow::Result<()> {
 
     let peripherals = Peripherals::take()?;
     let pins = peripherals.pins;
-    let button = PinDriver::input(pins.gpio9.downgrade_input())?;
 
-    // SPI pins: GPIO4=SCK, GPIO6=MOSI, GPIO5=MISO, GPIO7=CS
+    #[cfg(feature = "esp32-c3")]
+    #[rustfmt::skip]
+    let io_pins = (
+        pins.gpio9, // BOOT
+        pins.gpio4, // SCK
+        pins.gpio6, // MOSI
+        pins.gpio5, // MISO
+        pins.gpio7, // CS
+        pins.gpio10 // GDO0
+    );
+    #[cfg(feature = "esp-wroom-32")]
+    #[rustfmt::skip]
+    let io_pins = (
+        pins.gpio0,  // BOOT
+        pins.gpio18, // SCK
+        pins.gpio23, // MOSI
+        pins.gpio19, // MISO
+        pins.gpio5,  // CS
+        pins.gpio4,  // GDO0
+    );
+
+    let button = PinDriver::input(io_pins.0.downgrade_input())?;
     let driver = spi::SpiDriver::new(
         peripherals.spi2,
-        pins.gpio4,
-        pins.gpio6,
-        Some(pins.gpio5),
+        io_pins.1,
+        io_pins.2,
+        Some(io_pins.3),
         &spi::SpiDriverConfig::new(),
     )?;
     let spi_cfg = spi::config::Config::new().baudrate(4.MHz().into());
-    let dev = spi::SpiDeviceDriver::new(&driver, Some(pins.gpio7), &spi_cfg)?;
-
-    // GDO0 on GPIO10
-    let gdo0 = PinDriver::input(pins.gpio10.downgrade_input())?;
+    let dev = spi::SpiDeviceDriver::new(&driver, Some(io_pins.4), &spi_cfg)?;
+    let gdo0 = PinDriver::input(io_pins.5.downgrade_input())?;
 
     // Create CC1101 radio
     let radio = Cc1101Radio::new(dev, gdo0);

@@ -837,7 +837,7 @@ dependencies = [
 
 [[package]]
 name = "esp32multical21"
-version = "1.4.3"
+version = "1.4.4"
 dependencies = [
  "aes",
  "anyhow",

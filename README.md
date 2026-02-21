@@ -1,6 +1,6 @@
 # ESP32 Multical21
 
-A Rust embedded firmware for ESP32-C3 (primary target) that receives encrypted wireless M-Bus (wMBus)
+A Rust embedded firmware for ESP32-C3 and ESP32-WROOM32 that receives encrypted wireless M-Bus (wMBus)
 telegrams from Kamstrup Multical 21 water meters via a CC1101 sub-GHz RF module.
 Decoded meter readings are exposed through a web UI, REST API, MQTT, and optional ESPHome native API.
 
@@ -20,11 +20,11 @@ Runs on Tokio async runtime on top of FreeRTOS.
 
 ### Components
 
-- **ESP32-C3** (RISC-V, primary target) microcontroller with minimum 4MB flash
+- **ESP32-C3** (RISC-V)
+- **ESP-WROOM-32** (Xtensa ESP32)
 - **CC1101** sub-GHz RF transceiver module (configured to 868.950 MHz, 2-FSK)
 
-
-### Pinout (ESP32-C3)
+### Pinout (ESP32-C3 build, feature `esp32-c3`)
 
 | Pin    | Function                             |
 |--------|--------------------------------------|
@@ -35,7 +35,18 @@ Runs on Tokio async runtime on top of FreeRTOS.
 | GPIO10 | CC1101 GDO0                          |
 | GPIO9  | Factory settings button (active low) |
 
-The CC1101 is configured for wMBus C1 mode: 868.950 MHz, 2-FSK modulation, sync word `0x543D`,
+### Pinout (ESP-WROOM-32 build, feature `esp-wroom-32`)
+
+| Pin    | Function                             |
+|--------|--------------------------------------|
+| GPIO18 | SPI SCK                              |
+| GPIO19 | SPI MISO                             |
+| GPIO23 | SPI MOSI                             |
+| GPIO5  | SPI CS (CC1101)                      |
+| GPIO4  | CC1101 GDO0                          |
+| GPIO0  | Factory settings button (active low) |
+
+The CC1101 is configured for wMBus C1 mode: 868.949708 MHz, 2-FSK modulation, sync word `0x543D`,
 48-byte packets. `GDO0` is polled in software; with `IOCFG0=0x01` and `FIFOTHR=0x01`, it rises when
 the RX FIFO reaches threshold, after which firmware reads the packet and validates sync bytes.
 
@@ -45,42 +56,61 @@ the RX FIFO reaches threshold, after which firmware reads the packet and validat
 
 - Nightly Rust toolchain with `rust-src` component (see `rust-toolchain.toml`)
 - ESP-IDF tooling: `espflash`, `ldproxy`, `embuild`
+- Xtensa (`ESP32-WROOM32`) builds require the `esp` Rust toolchain (`cargo +esp`)
 
+### Utility Scripts
 
-### Commands
+The repository provides hardware-specific helpers:
 
 ```bash
 source env.sh                          # Set WIFI_SSID, WIFI_PASS, MCU
 
-cargo build                            # Debug build
-cargo build -r                         # Release build (opt-level=z, fat LTO)
-cargo clippy --all-targets --all-features  # Lint
+./flash_c3                             # Build+flash+monitor for ESP32-C3
+./flash_wroom32                        # Build+flash+monitor for ESP-WROOM-32
 
-cargo run -r -- --baud 921600          # Build release + flash + monitor
-./flash                                # Shortcut for the above
-./make_ota_image                       # Build release + export firmware.bin
+./make_ota_image_c3                    # Build release image -> firmware-c3.bin
+./make_ota_image_wroom32               # Build release image -> firmware-wroom32.bin
 ```
 
-The flash runner (configured in `.cargo/config.toml`) uses `espflash` with the dual-OTA partition table and erases OTA metadata on each fresh flash:
+### What Each Script Does
 
-```
-espflash flash --monitor --partition-table ./partitions.csv --erase-parts otadata
-```
+- `flash_c3`:
+  - Runs `cargo run -r`
+  - Uses `.cargo/config.toml` defaults (`riscv32imc-esp-espidf`, default feature `esp32-c3`)
+- `flash_wroom32`:
+  - Runs `MCU=esp32 cargo +esp run -r --target xtensa-esp32-espidf --no-default-features --features=esp-wroom-32`
+- `make_ota_image_c3`:
+  - Runs `cargo build -r`
+  - Exports `firmware-c3.bin` with `espflash save-image --chip esp32c3 ...`
+- `make_ota_image_wroom32`:
+  - Runs `MCU=esp32 cargo +esp build -r --target xtensa-esp32-espidf --no-default-features --features=esp-wroom-32`
+  - Exports `firmware-wroom32.bin` with `espflash save-image --chip esp32 ...`
 
-### Targeting Other ESP32 Chips
+### Manual Build Examples
 
 ```bash
-# Default target is ESP32-C3 (riscv32imc-esp-espidf)
-cargo build
+# ESP32-C3 (default)
+cargo build -r
 
-# For other chips, adjust `.cargo/config.toml` target/runner first,
-# then build with the matching feature set.
-cargo build --no-default-features --features esp32s
+# ESP32-WROOM32
+MCU=esp32 cargo +esp build -r --target xtensa-esp32-espidf --no-default-features --features esp-wroom-32
 ```
 
-The default feature/target is ESP32-C3 (`esp32c3`, `riscv32imc-esp-espidf`).
-`make_ota_image` currently uses `esp32c3` settings; for other chips, run `espflash save-image`
-manually with the correct chip and target path.
+### Manual Lint Examples
+
+```bash
+# ESP32-C3 (default feature set)
+cargo clippy
+
+# ESP32-WROOM32 feature set
+MCU=esp32 cargo +esp clippy --target xtensa-esp32-espidf --no-default-features --features esp-wroom-32
+```
+
+The C3 flash runner (configured in `.cargo/config.toml`) uses `espflash` with the dual-OTA partition table and erases OTA metadata on each fresh flash:
+
+```bash
+espflash flash --monitor --partition-table ./partitions.csv --erase-parts otadata
+```
 
 ## Configuration
 
@@ -198,7 +228,8 @@ ota_1,    app,  ota_1, ,        1984K
 
 ## Watchdogs & Recovery
 
-- **Reset button**: Hold GPIO9 low for 5 seconds to factory-reset configuration and reboot
+- **Reset button**: Hold the board's boot/reset GPIO low for 5 seconds to factory-reset configuration and reboot
+  (`GPIO9` on ESP32-C3, `GPIO0` on ESP32-WROOM32)
 - **WiFi watchdog**: If initial WiFi connection fails within 30 seconds, the device reboots
 - **NTP watchdog**: If SNTP sync does not complete within ~60 seconds after WiFi, the device reboots
 - **Ping watchdog**: Every 5 minutes, pings the gateway 3 times. If all fail, reboots
@@ -208,6 +239,13 @@ ota_1,    app,  ota_1, ,        1984K
 ## Build Configuration
 
 - **Rust edition**: 2024 (nightly)
+- **Hardware features**:
+  - `esp32-c3` (default)
+  - `esp-wroom-32`
+- **Conditional compilation**:
+  - GPIO mapping is selected with `#[cfg(feature = "...")]` in `src/bin/esp32multical21.rs`
+  - `esp32-c3` maps button/SPI/GDO0 to GPIO9/4/6/5/7/10
+  - `esp-wroom-32` maps button/SPI/GDO0 to GPIO0/18/23/19/5/4
 - **Release profile**: `opt-level = "z"` (size-optimized), fat LTO, single codegen unit
 - **ESP-IDF**: v5.4.3, main task stack 20 KB, FreeRTOS tick rate 1 kHz
 - **Clippy**: `future-size-threshold = 128` to catch oversized futures

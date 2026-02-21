@@ -12,7 +12,7 @@
 <main class="app">
 <section class="panel">
 <h1>ESP32 Multical21</h1>
-<p>Firmware version {{ crate::FW_VERSION }}</p>
+<p>Firmware version {{ crate::FW_VERSION }} | Hardware {{ crate::HW_TARGET }}</p>
 <p>OTA slot {{ askama::get_value::<String>("ota_slot")? }}</p>
 <div id="uptime">- - -</div>
 </section>

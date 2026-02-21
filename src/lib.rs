@@ -6,7 +6,7 @@ pub use std::{
     any::Any,
     net,
     pin::Pin,
-    sync::{atomic::AtomicU32, Arc},
+    sync::{Arc, atomic::AtomicU32},
 };
 
 pub use anyhow::bail;
@@ -34,10 +34,15 @@ pub use log::*;
 pub use serde::{Deserialize, Serialize};
 pub use tokio::{
     sync::RwLock,
-    time::{sleep, timeout, Duration},
+    time::{Duration, sleep, timeout},
 };
 
 pub const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg(feature = "esp32-c3")]
+pub const HW_TARGET: &str = "ESP32-C3";
+#[cfg(feature = "esp-wroom-32")]
+pub const HW_TARGET: &str = "ESP32-WROOM";
 
 pub type AppResult<T> = Result<T, AppError>;
 
