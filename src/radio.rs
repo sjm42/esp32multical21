@@ -1,11 +1,11 @@
 // radio.rs — CC1101 SPI radio driver for wMBus C1 mode
 
 use cc1101::{
-    lowlevel::{
-        registers::{Command as CcCommand, Config as CcConfig, Status as CcStatus},
-        Cc1101 as LowLevelCc1101,
-    },
     Cc1101,
+    lowlevel::{
+        Cc1101 as LowLevelCc1101,
+        registers::{Command as CcCommand, Config as CcConfig, Status as CcStatus},
+    },
 };
 
 use crate::*;

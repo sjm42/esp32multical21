@@ -2,7 +2,12 @@
 
 #![warn(clippy::large_futures)]
 
-pub use std::{any::Any, net, pin::Pin, sync::Arc};
+pub use std::{
+    any::Any,
+    net,
+    pin::Pin,
+    sync::{atomic::AtomicU32, Arc},
+};
 
 pub use anyhow::bail;
 pub use askama::Template;

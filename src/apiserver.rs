@@ -1,12 +1,14 @@
 // apiserver.rs
 
+use std::sync::atomic::Ordering;
+
 use axum::{
-    Json, Router,
-    body::Body,
-    extract::{Form, State, rejection::JsonRejection},
-    http::{Response, StatusCode, header},
+    body::Body, extract::{rejection::JsonRejection, Form, State},
+    http::{header, Response, StatusCode},
     response::{Html, IntoResponse},
     routing::*,
+    Json,
+    Router,
 };
 pub use axum_macros::debug_handler;
 use embedded_svc::http::client::Client as HttpClient;
@@ -27,7 +29,8 @@ pub async fn run_api_server(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
     let app = Router::new()
         .route("/", get(get_index))
         .route("/favicon.ico", get(get_favicon))
-        .route("/form.js", get(get_formjs))
+        .route("/form.js", get(get_form_js))
+        .route("/index.css", get(get_index_css))
         .route("/uptime", get(get_uptime))
         .route("/conf", get(get_conf).post(set_conf).options(options))
         .route("/meter", get(get_meter))
@@ -42,11 +45,7 @@ pub async fn run_api_server(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
 }
 
 pub async fn options(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
-    let cnt = {
-        let mut c = state.api_cnt.write().await;
-        *c += 1;
-        *c
-    };
+    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} options()");
 
     (
@@ -61,11 +60,7 @@ pub async fn options(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Bo
 }
 
 pub async fn get_index(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
-    let cnt = {
-        let mut c = state.api_cnt.write().await;
-        *c += 1;
-        *c
-    };
+    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} get_index()");
 
     let ota_slot = state.ota_slot.clone();
@@ -83,11 +78,7 @@ pub async fn get_index(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<
 }
 
 pub async fn get_favicon(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
-    let cnt = {
-        let mut c = state.api_cnt.write().await;
-        *c += 1;
-        *c
-    };
+    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} get_favicon()");
 
     let favicon = include_bytes!("favicon.ico");
@@ -99,13 +90,9 @@ pub async fn get_favicon(State(state): State<Arc<Pin<Box<MyState>>>>) -> Respons
         .into_response()
 }
 
-pub async fn get_formjs(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
-    let cnt = {
-        let mut c = state.api_cnt.write().await;
-        *c += 1;
-        *c
-    };
-    info!("#{cnt} get_formjs()");
+pub async fn get_form_js(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
+    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
+    info!("#{cnt} get_form_js()");
 
     let formjs = include_bytes!("form.js");
     (
@@ -116,12 +103,16 @@ pub async fn get_formjs(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response
         .into_response()
 }
 
+pub async fn get_index_css(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
+    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
+    info!("#{cnt} get_index_css()");
+
+    let indexcss = include_bytes!("index.css");
+    (StatusCode::OK, [(header::CONTENT_TYPE, "text/css")], indexcss.to_vec()).into_response()
+}
+
 pub async fn get_uptime(State(state): State<Arc<Pin<Box<MyState>>>>) -> (StatusCode, Json<Uptime>) {
-    let cnt = {
-        let mut c = state.api_cnt.write().await;
-        *c += 1;
-        *c
-    };
+    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} get_uptime()");
 
     let uptime = *state.uptime.read().await;
@@ -129,11 +120,7 @@ pub async fn get_uptime(State(state): State<Arc<Pin<Box<MyState>>>>) -> (StatusC
 }
 
 pub async fn get_conf(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
-    let cnt = {
-        let mut c = state.api_cnt.write().await;
-        *c += 1;
-        *c
-    };
+    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} get_conf()");
 
     (
@@ -147,11 +134,7 @@ pub async fn get_conf(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<B
 }
 
 pub async fn get_meter(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
-    let cnt = {
-        let mut c = state.api_cnt.write().await;
-        *c += 1;
-        *c
-    };
+    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} get_meter()");
 
     match &*state.latest_data.read().await {
@@ -164,11 +147,7 @@ pub async fn set_conf(
     State(state): State<Arc<Pin<Box<MyState>>>>,
     config_payload: Result<Json<MyConfig>, JsonRejection>,
 ) -> Response<Body> {
-    let cnt = {
-        let mut c = state.api_cnt.write().await;
-        *c += 1;
-        *c
-    };
+    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} set_conf()");
 
     let Json(mut config) = match config_payload {
@@ -213,11 +192,7 @@ pub async fn set_conf(
 }
 
 pub async fn reset_conf(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
-    let cnt = {
-        let mut c = state.api_cnt.write().await;
-        *c += 1;
-        *c
-    };
+    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} reset_conf()");
 
     info!("Saving  default config to nvs...");
@@ -251,11 +226,7 @@ async fn update_fw(
     State(state): State<Arc<Pin<Box<MyState>>>>,
     Form(fw_update): Form<UpdateFirmware>,
 ) -> Response<Body> {
-    let cnt = {
-        let mut c = state.api_cnt.write().await;
-        *c += 1;
-        *c
-    };
+    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} update_fw()");
 
     info!("Firmware update: \n{fw_update:#?}");

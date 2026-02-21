@@ -1,17 +1,27 @@
 # ESP32 Multical21
 
-A Rust embedded firmware for ESP32-C3 (or ESP32-S2) that receives encrypted wireless M-Bus (wMBus)
+A Rust embedded firmware for ESP32-C3 (primary target) that receives encrypted wireless M-Bus (wMBus)
 telegrams from Kamstrup Multical 21 water meters via a CC1101 868 MHz RF module.
 Decoded meter readings are exposed through a web UI, REST API, MQTT, and optional ESPHome native API.
 
 Runs on Tokio async runtime on top of FreeRTOS.
 
+![Kamstrup Multical 21 meter](images/multical-21.png)
+
+## Web UI
+
+![Web UI screenshot 1](images/screenshot-1.png)
+
+![Web UI screenshot 2](images/screenshot-2.png)
+
+![Web UI screenshot 3](images/screenshot-3.png)
+
 ## Hardware
 
 ### Components
 
-- **ESP32-C3** (RISC-V) or ESP32-S2 (Xtensa) microcontroller with minimum 4MB flash
-- **CC1101** sub-GHz RF transceiver module (868.3 MHz, 2-FSK)
+- **ESP32-C3** (RISC-V, primary target) microcontroller with minimum 4MB flash
+- **CC1101** sub-GHz RF transceiver module (configured to 868.950 MHz, 2-FSK)
 
 
 ### Pinout (ESP32-C3)
@@ -22,12 +32,12 @@ Runs on Tokio async runtime on top of FreeRTOS.
 | GPIO5  | SPI MISO            |
 | GPIO6  | SPI MOSI            |
 | GPIO7  | SPI CS (CC1101)     |
-| GPIO10 | CC1101 GDO0 (IRQ)  |
+| GPIO10 | CC1101 GDO0         |
 | GPIO9  | Reset button (active low) |
 
-The CC1101 is configured for wMBus C1 mode: 868.3 MHz, 2-FSK modulation, sync word `0x543D`,
-48-byte packets. GDO0 asserts on sync word detection and deasserts when the packet is complete.
-Firmware waits for this as a GPIO interrupt-driven `rising -> falling` edge pair.
+The CC1101 is configured for wMBus C1 mode: 868.950 MHz, 2-FSK modulation, sync word `0x543D`,
+48-byte packets. `GDO0` is polled in software; with `IOCFG0=0x01` and `FIFOTHR=0x01`, it rises when
+the RX FIFO reaches threshold, after which firmware reads the packet and validates sync bytes.
 
 ## Building & Flashing
 
@@ -44,7 +54,7 @@ source env.sh                          # Set WIFI_SSID, WIFI_PASS, MCU
 
 cargo build                            # Debug build
 cargo build -r                         # Release build (opt-level=z, fat LTO)
-cargo clippy                           # Lint
+cargo clippy --all-targets --all-features  # Lint
 
 cargo run -r -- --baud 921600          # Build release + flash + monitor
 ./flash                                # Shortcut for the above
@@ -57,13 +67,20 @@ The flash runner (configured in `.cargo/config.toml`) uses `espflash` with the d
 espflash flash --monitor --partition-table ./partitions.csv --erase-parts otadata
 ```
 
-### Targeting ESP32-S2
+### Targeting Other ESP32 Chips
 
 ```bash
-cargo build --no-default-features --features esp32s 
+# Default target is ESP32-C3 (riscv32imc-esp-espidf)
+cargo build
+
+# For other chips, adjust `.cargo/config.toml` target/runner first,
+# then build with the matching feature set.
+cargo build --no-default-features --features esp32s
 ```
 
-The default feature is `esp32c3` (RISC-V target `riscv32imc-esp-espidf`).
+The default feature/target is ESP32-C3 (`esp32c3`, `riscv32imc-esp-espidf`).
+`make_ota_image` currently uses `esp32c3` settings; for other chips, run `espflash save-image`
+manually with the correct chip and target path.
 
 ## Configuration
 
@@ -147,6 +164,9 @@ Served by Axum on port 80.
 | Method  | Path           | Description                          |
 |---------|----------------|--------------------------------------|
 | GET     | `/`            | Web configuration UI (Askama template) |
+| GET     | `/favicon.ico` | Favicon |
+| GET     | `/form.js`     | Web UI JavaScript |
+| GET     | `/index.css`   | Web UI stylesheet |
 | GET     | `/uptime`      | `{"uptime": <seconds>}`             |
 | GET     | `/conf`        | `{"ok": true, "config": {...}}`     |
 | POST    | `/conf`        | Save config and reboot. JSON response: `{"ok": <bool>, "message": "<text>"}` |
@@ -232,10 +252,10 @@ When `esphome_enable=true`, the firmware opens an ESPHome-compatible native API 
 
 ## wMBus Protocol
 
-The CC1101 radio listens for wireless M-Bus C1 mode telegrams at 868.3 MHz. When a packet arrives:
+The CC1101 radio listens for wireless M-Bus C1 mode telegrams at 868.949708 MHz. When a packet arrives:
 
-1. **Edge-triggered RX complete** — Firmware waits for GDO0 `rising -> falling` edges (`sync -> packet complete`)
-2. **Sync detection** — CC1101 matches the C1 preamble `0x543D`
+1. **FIFO threshold signal** — Firmware polls `GDO0` and detects packet-ready state when FIFO reaches threshold
+2. **Sync validation** — Firmware checks the first bytes are the C1 sync `0x54 0x3D`
 3. **Meter ID filtering** — Only packets matching the configured meter serial are processed
 4. **AES-128-CTR decryption** — The 16-byte IV is constructed from the frame header fields (manufacturer, address, communication control, session number)
 5. **CRC-16 validation** — EN 13757 polynomial `0x3D65` verifies payload integrity
@@ -274,12 +294,14 @@ and runs seven concurrent tasks under `tokio::select!` (service tasks wait until
                               │
               ┌───────────────┴───────────────┐
               │  Shared State (Arc<MyState>)   │
-              │  RwLock fields for config,     │
-              │  uptime, wifi, meter, etc.     │
+              │  Mostly RwLock fields for      │
+              │  config/wifi/meter + atomic    │
+              │  API request counter            │
               └───────────────────────────────┘
 ```
 
-All tasks share a single `Arc<Pin<Box<MyState>>>` instance with `RwLock`-protected fields.
+All tasks share a single `Arc<Pin<Box<MyState>>>` instance with mostly `RwLock`-protected fields;
+`api_cnt` is an atomic counter.
 
 ### Source Modules
 
@@ -292,7 +314,7 @@ All tasks share a single `Arc<Pin<Box<MyState>>>` instance with `RwLock`-protect
 | `src/radio.rs`     | CC1101 SPI driver — register config, packet RX     |
 | `src/wmbus.rs`     | wMBus C1 frame parsing, AES-128-CTR decryption     |
 | `src/multical21.rs`| Kamstrup Multical 21 payload parser                |
-| `src/measure.rs`   | Sensor polling loop — ties radio to state          |
+| `src/measure.rs`   | Radio RX loop — waits for WiFi/NTP and parses meter frames |
 | `src/mqtt_sender.rs` | MQTT client lifecycle and publishing             |
 | `src/apiserver.rs` | Axum HTTP routes, web UI, OTA updates              |
 | `src/esphome_api.rs` | ESPHome native API implementation                |

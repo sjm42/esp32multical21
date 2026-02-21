@@ -1,12 +1,13 @@
 // state.rs
 
+
 use crate::*;
 
 pub struct MyState {
     pub ota_slot: String,
     pub config: RwLock<MyConfig>,
     pub uptime: RwLock<usize>,
-    pub api_cnt: RwLock<u64>,
+    pub api_cnt: AtomicU32,
     pub wifi_up: RwLock<bool>,
     pub if_index: RwLock<u32>,
     pub ip_addr: RwLock<net::Ipv4Addr>,
@@ -26,7 +27,7 @@ impl MyState {
             ota_slot,
             config: RwLock::new(config),
             uptime: RwLock::new(0),
-            api_cnt: RwLock::new(0),
+            api_cnt: 0.into(),
             wifi_up: RwLock::new(false),
             if_index: RwLock::new(0),
             ip_addr: RwLock::new(net::Ipv4Addr::new(0, 0, 0, 0)),

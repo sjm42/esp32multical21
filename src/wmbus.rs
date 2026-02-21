@@ -2,8 +2,8 @@
 
 use aes::Aes128;
 use ctr::{
-    cipher::{KeyIvInit, StreamCipher},
     Ctr128BE,
+    cipher::{KeyIvInit, StreamCipher},
 };
 
 use crate::*;
