@@ -54,62 +54,44 @@ the RX FIFO reaches threshold, after which firmware reads the packet and validat
 
 ### Prerequisites
 
-- Nightly Rust toolchain with `rust-src` component (see `rust-toolchain.toml`)
-- ESP-IDF tooling: `espflash`, `ldproxy`, `embuild`
-- Xtensa (`ESP32-WROOM32`) builds require the `esp` Rust toolchain (`cargo +esp`)
+- Rust nightly with `rust-src` (default path in `rust-toolchain.toml`)
+- ESP tools: `espflash`, `ldproxy`, `espup`
+- Xtensa builds (`ESP-WROOM-32`) also require the `esp` Rust toolchain (`cargo +esp`)
+
+Debian/Ubuntu packages and Rust bootstrap example:
+
+```bash
+sudo apt -y install build-essential curl git libssl-dev libudev-dev pkg-config python3-venv clang-18
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+chmod 755 rustup.sh
+./rustup.sh
+
+. "$HOME/.cargo/env"
+rustup toolchain add nightly
+espup install
+
+cargo install espmonitor espup ldproxy flip-link cargo-espflash espflash
+
+# optional & useful
+cargo install cargo-binutils cargo-embed cargo-flash cargo-generate cargo-update probe-run
+```
 
 ### Utility Scripts
+
+Optional helper environment file:
+
+```bash
+. env.sh   # WIFI_SSID/WIFI_PASS defaults for build-time config
+```
 
 The repository provides hardware-specific helpers:
 
 ```bash
-source env.sh                          # Set WIFI_SSID, WIFI_PASS, MCU
-
 ./flash_c3                             # Build+flash+monitor for ESP32-C3
 ./flash_wroom32                        # Build+flash+monitor for ESP-WROOM-32
 
-./make_ota_image_c3                    # Build release image -> firmware-c3.bin
-./make_ota_image_wroom32               # Build release image -> firmware-wroom32.bin
-```
-
-### What Each Script Does
-
-- `flash_c3`:
-  - Runs `cargo run -r`
-  - Uses `.cargo/config.toml` defaults (`riscv32imc-esp-espidf`, default feature `esp32-c3`)
-- `flash_wroom32`:
-  - Runs `MCU=esp32 cargo +esp run -r --target xtensa-esp32-espidf --no-default-features --features=esp-wroom-32`
-- `make_ota_image_c3`:
-  - Runs `cargo build -r`
-  - Exports `firmware-c3.bin` with `espflash save-image --chip esp32c3 ...`
-- `make_ota_image_wroom32`:
-  - Runs `MCU=esp32 cargo +esp build -r --target xtensa-esp32-espidf --no-default-features --features=esp-wroom-32`
-  - Exports `firmware-wroom32.bin` with `espflash save-image --chip esp32 ...`
-
-### Manual Build Examples
-
-```bash
-# ESP32-C3 (default)
-cargo build -r
-
-# ESP32-WROOM32
-MCU=esp32 cargo +esp build -r --target xtensa-esp32-espidf --no-default-features --features esp-wroom-32
-```
-
-### Manual Lint Examples
-
-```bash
-# ESP32-C3 (default feature set)
-cargo clippy
-
-# ESP32-WROOM32 feature set
-MCU=esp32 cargo +esp clippy --target xtensa-esp32-espidf --no-default-features --features esp-wroom-32
-```
-
-The C3 flash runner (configured in `.cargo/config.toml`) uses `espflash` with the dual-OTA partition table and erases OTA metadata on each fresh flash:
-
-```bash
-espflash flash --monitor --partition-table ./partitions.csv --erase-parts otadata
+./make_ota_image_c3                    # Build release OTA image -> firmware-c3.bin
+./make_ota_image_wroom32               # Build release OTA image -> firmware-wroom32.bin
 ```
 
 ## Configuration
@@ -119,23 +101,23 @@ with CRC-32 integrity checking (`CRC_32_ISCSI`), stored under key `cfg`.
 The serialized config blob is limited to 256 bytes.
 If the NVS entry is missing or fails CRC/deserialization checks, defaults are written automatically on boot.
 
-| Parameter     | Description                              | Default        |
-|---------------|------------------------------------------|----------------|
-| `wifi_ssid`   | WiFi SSID                                | from `env.sh`  |
-| `wifi_pass`   | WiFi password                            | from `env.sh` / empty |
-| `wifi_wpa2ent`| Use WPA2-Enterprise auth                 | false          |
-| `wifi_username` | WPA2-Enterprise username/identity      | (empty)        |
-| `v4dhcp`      | Use DHCP                                 | true           |
-| `v4addr`      | Static IPv4 address                      | 0.0.0.0        |
-| `v4mask`      | Subnet mask bits (0-30)                  | 0              |
-| `v4gw`        | Gateway                                  | 0.0.0.0        |
-| `dns1`/`dns2` | DNS servers                              | 0.0.0.0        |
-| `esphome_enable` | Enable ESPHome native API listener   | false          |
-| `mqtt_enable` | Enable MQTT publishing                   | false          |
-| `mqtt_url`    | MQTT broker URL                          | `mqtt://mqtt.local:1883` |
-| `mqtt_topic`  | MQTT topic prefix                        | `watermeter`   |
-| `meter_id`    | Target meter serial (8 hex chars)        | (empty)        |
-| `meter_key`   | AES-128 decryption key (32 hex chars)    | (empty)        |
+| Parameter        | Description                           | Default                  |
+|------------------|---------------------------------------|--------------------------|
+| `wifi_ssid`      | WiFi SSID                             | from `env.sh`            |
+| `wifi_pass`      | WiFi password                         | from `env.sh` / empty    |
+| `wifi_wpa2ent`   | Use WPA2-Enterprise auth              | false                    |
+| `wifi_username`  | WPA2-Enterprise username/identity     | (empty)                  |
+| `v4dhcp`         | Use DHCP                              | true                     |
+| `v4addr`         | Static IPv4 address                   | 0.0.0.0                  |
+| `v4mask`         | Subnet mask bits (0-30)               | 0                        |
+| `v4gw`           | Gateway                               | 0.0.0.0                  |
+| `dns1`/`dns2`    | DNS servers                           | 0.0.0.0                  |
+| `esphome_enable` | Enable ESPHome native API listener    | false                    |
+| `mqtt_enable`    | Enable MQTT publishing                | false                    |
+| `mqtt_url`       | MQTT broker URL                       | `mqtt://mqtt.local:1883` |
+| `mqtt_topic`     | MQTT topic prefix                     | `watermeter`             |
+| `meter_id`       | Target meter serial (8 hex chars)     | (empty)                  |
+| `meter_key`      | AES-128 decryption key (32 hex chars) | (empty)                  |
 
 Configuration can be changed through the web UI at `http://<device-ip>/` or via `POST /conf` with a JSON body.
 Changes take effect after an automatic reboot.
@@ -148,6 +130,7 @@ Environment variables `WIFI_SSID` and `WIFI_PASS` provide build-time defaults.
 Setup your MQTT broker first.
 
 To your main config `configuration.yaml` you probably want to add:
+
 ```
 mqtt: !include_dir_list mqtt
 ```
@@ -191,18 +174,18 @@ sensor:
 
 Served by Axum on port 80.
 
-| Method  | Path           | Description                          |
-|---------|----------------|--------------------------------------|
-| GET     | `/`            | Web configuration UI (Askama template) |
-| GET     | `/favicon.ico` | Favicon |
-| GET     | `/form.js`     | Web UI JavaScript |
-| GET     | `/index.css`   | Web UI stylesheet |
-| GET     | `/uptime`      | `{"uptime": <seconds>}`             |
-| GET     | `/conf`        | `{"ok": true, "config": {...}}`     |
-| POST    | `/conf`        | Save config and reboot. JSON response: `{"ok": <bool>, "message": "<text>"}` |
-| GET     | `/reset_conf`  | Factory reset and reboot. JSON response: `{"ok": <bool>, "message": "<text>"}` |
-| GET     | `/meter`       | Current meter reading as JSON (or `{"status":"no reading"}` if empty) |
-| POST    | `/fw`          | OTA firmware update (form field `url`) |
+| Method | Path           | Description                                                                    |
+|--------|----------------|--------------------------------------------------------------------------------|
+| GET    | `/`            | Web configuration UI (Askama template)                                         |
+| GET    | `/favicon.ico` | Favicon                                                                        |
+| GET    | `/form.js`     | Web UI JavaScript                                                              |
+| GET    | `/index.css`   | Web UI stylesheet                                                              |
+| GET    | `/uptime`      | `{"uptime": <seconds>}`                                                        |
+| GET    | `/conf`        | `{"ok": true, "config": {...}}`                                                |
+| POST   | `/conf`        | Save config and reboot. JSON response: `{"ok": <bool>, "message": "<text>"}`   |
+| GET    | `/reset_conf`  | Factory reset and reboot. JSON response: `{"ok": <bool>, "message": "<text>"}` |
+| GET    | `/meter`       | Current meter reading as JSON (or `{"status":"no reading"}` if empty)          |
+| POST   | `/fw`          | OTA firmware update (form field `url`)                                         |
 
 CORS preflight (`OPTIONS`) is implemented for `/conf` and `/fw`.
 
@@ -240,12 +223,12 @@ ota_1,    app,  ota_1, ,        1984K
 
 - **Rust edition**: 2024 (nightly)
 - **Hardware features**:
-  - `esp32-c3` (default)
-  - `esp-wroom-32`
+    - `esp32-c3` (default)
+    - `esp-wroom-32`
 - **Conditional compilation**:
-  - GPIO mapping is selected with `#[cfg(feature = "...")]` in `src/bin/esp32multical21.rs`
-  - `esp32-c3` maps button/SPI/GDO0 to GPIO9/4/6/5/7/10
-  - `esp-wroom-32` maps button/SPI/GDO0 to GPIO0/18/23/19/5/4
+    - GPIO mapping is selected with `#[cfg(feature = "...")]` in `src/bin/esp32multical21.rs`
+    - `esp32-c3` maps button/SPI/GDO0 to GPIO9/4/6/5/7/10
+    - `esp-wroom-32` maps button/SPI/GDO0 to GPIO0/18/23/19/5/4
 - **Release profile**: `opt-level = "z"` (size-optimized), fat LTO, single codegen unit
 - **ESP-IDF**: v5.4.3, main task stack 20 KB, FreeRTOS tick rate 1 kHz
 - **Clippy**: `future-size-threshold = 128` to catch oversized futures
@@ -254,15 +237,15 @@ ota_1,    app,  ota_1, ,        1984K
 
 ```json
 {
-   "total_l": 362705,
-   "month_start_l": 360093,
-   "total_m3": 362.705,
-   "month_start_m3": 360.093,
-   "flow_temp": 1,
-   "ambient_temp": 10,
-   "info_codes": 97,
-   "timestamp": 1771439618,
-   "timestamp_s": "2026-02-18T18:33:38Z"
+  "total_l": 362705,
+  "month_start_l": 360093,
+  "total_m3": 362.705,
+  "month_start_m3": 360.093,
+  "flow_temp": 1,
+  "ambient_temp": 10,
+  "info_codes": 97,
+  "timestamp": 1771439618,
+  "timestamp_s": "2026-02-18T18:33:38Z"
 }
 ```
 
@@ -270,10 +253,12 @@ The web UI polls `/uptime` and `/meter` every 30 seconds and renders a live dash
 
 ## MQTT
 
-When enabled, the device connects to the configured MQTT broker and publishes on new meter data (checked every 10 seconds):
+When enabled, the device connects to the configured MQTT broker and publishes on new meter data (checked every 10
+seconds):
 
 - **`{topic}/uptime`** — `{"uptime": <seconds>}`
-- **`{topic}/meter`** — `{"total_l": <u32>, "month_start_l": <u32>, "total_m3": <f32>, "month_start_m3": <f32>, "flow_temp": <u8>, "ambient_temp": <u8>, "info_codes": <u8>, "timestamp": <i64>, "timestamp_s": <String>}`
+- **`{topic}/meter`** —
+  `{"total_l": <u32>, "month_start_l": <u32>, "total_m3": <f32>, "month_start_m3": <f32>, "flow_temp": <u8>, "ambient_temp": <u8>, "info_codes": <u8>, "timestamp": <i64>, "timestamp_s": <String>}`
 
 Volumes are published both in liters and cubic meters.
 MQTT uses QoS 1 for publishes; `{topic}/meter` is retained and `{topic}/uptime` is non-retained.
@@ -285,7 +270,8 @@ When `esphome_enable=true`, the firmware opens an ESPHome-compatible native API 
 
 - Plaintext-only implementation (Noise encryption key setup is rejected)
 - Responds to hello/device-info/list-entities/subscribe-states/ping/disconnect flows
-- Exposes `uptime` plus meter fields (`total_l`, `month_start_l`, `total_m3`, `month_start_m3`, temperatures, info codes, timestamps)
+- Exposes `uptime` plus meter fields (`total_l`, `month_start_l`, `total_m3`, `month_start_m3`, temperatures, info
+  codes, timestamps)
 - `timestamp_s` is exported as a text sensor; numeric fields are exported as sensors
 
 ## wMBus Protocol
@@ -295,9 +281,11 @@ The CC1101 radio listens for wireless M-Bus C1 mode telegrams at 868.949708 MHz.
 1. **FIFO threshold signal** — Firmware polls `GDO0` and detects packet-ready state when FIFO reaches threshold
 2. **Sync validation** — Firmware checks the first bytes are the C1 sync `0x54 0x3D`
 3. **Meter ID filtering** — Only packets matching the configured meter serial are processed
-4. **AES-128-CTR decryption** — The 16-byte IV is constructed from the frame header fields (manufacturer, address, communication control, session number)
+4. **AES-128-CTR decryption** — The 16-byte IV is constructed from the frame header fields (manufacturer, address,
+   communication control, session number)
 5. **CRC-16 validation** — EN 13757 polynomial `0x3D65` verifies payload integrity
-6. **Payload parsing** — Multical 21 compact (CI `0x79`) or long (CI `0x78`) frame format extracts volume, temperature, and status data
+6. **Payload parsing** — Multical 21 compact (CI `0x79`) or long (CI `0x78`) frame format extracts volume, temperature,
+   and status data
 
 ### Frame Structure
 
@@ -343,20 +331,20 @@ All tasks share a single `Arc<Pin<Box<MyState>>>` instance with mostly `RwLock`-
 
 ### Source Modules
 
-| File               | Purpose                                            |
-|--------------------|----------------------------------------------------|
-| `src/bin/esp32multical21.rs` | Entry point, hardware init, task orchestration |
-| `src/lib.rs`       | Re-exports, common types, `FW_VERSION` constant    |
-| `src/state.rs`     | `MyState` struct — shared concurrent state         |
-| `src/config.rs`    | `MyConfig` struct — NVS serialization/deserialization |
-| `src/radio.rs`     | CC1101 SPI driver — register config, packet RX     |
-| `src/wmbus.rs`     | wMBus C1 frame parsing, AES-128-CTR decryption     |
-| `src/multical21.rs`| Kamstrup Multical 21 payload parser                |
-| `src/measure.rs`   | Radio RX loop — waits for WiFi/NTP and parses meter frames |
-| `src/mqtt_sender.rs` | MQTT client lifecycle and publishing             |
-| `src/apiserver.rs` | Axum HTTP routes, web UI, OTA updates              |
-| `src/esphome_api.rs` | ESPHome native API implementation                |
-| `src/wifi.rs`      | WiFi connection/reconnection state machine         |
+| File                         | Purpose                                                    |
+|------------------------------|------------------------------------------------------------|
+| `src/bin/esp32multical21.rs` | Entry point, hardware init, task orchestration             |
+| `src/lib.rs`                 | Re-exports, common types, `FW_VERSION` constant            |
+| `src/state.rs`               | `MyState` struct — shared concurrent state                 |
+| `src/config.rs`              | `MyConfig` struct — NVS serialization/deserialization      |
+| `src/radio.rs`               | CC1101 SPI driver — register config, packet RX             |
+| `src/wmbus.rs`               | wMBus C1 frame parsing, AES-128-CTR decryption             |
+| `src/multical21.rs`          | Kamstrup Multical 21 payload parser                        |
+| `src/measure.rs`             | Radio RX loop — waits for WiFi/NTP and parses meter frames |
+| `src/mqtt_sender.rs`         | MQTT client lifecycle and publishing                       |
+| `src/apiserver.rs`           | Axum HTTP routes, web UI, OTA updates                      |
+| `src/esphome_api.rs`         | ESPHome native API implementation                          |
+| `src/wifi.rs`                | WiFi connection/reconnection state machine                 |
 
 ### Startup Sequence
 
@@ -367,7 +355,6 @@ All tasks share a single `Arc<Pin<Box<MyState>>>` instance with mostly `RwLock`-
 5. Create WiFi driver and shared `MyState`
 6. Launch Tokio runtime with seven concurrent tasks
 7. WiFi connects (30s timeout, reboots on failure), then all services start
-
 
 ## License
 
