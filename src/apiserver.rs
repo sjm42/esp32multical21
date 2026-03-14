@@ -17,13 +17,13 @@ use crate::*;
 
 pub async fn run_api_server(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
     loop {
-        if *state.wifi_up.read().await {
+        if *state.net_up.read().await {
             break;
         }
-        sleep(Duration::from_secs(3)).await;
+        sleep(Duration::from_secs(5)).await;
     }
 
-    let listen = format!("0.0.0.0:{}", DEFAULT_API_PORT);
+    let listen = format!("0.0.0.0:{}", HTTP_API_PORT);
     let addr = listen.parse::<net::SocketAddr>()?;
 
     let app = Router::new()

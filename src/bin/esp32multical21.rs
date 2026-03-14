@@ -71,7 +71,7 @@ fn main() -> anyhow::Result<()> {
         pins.gpio7, // CS
         pins.gpio10 // GDO0
     );
-    #[cfg(feature = "esp-wroom-32")]
+    #[cfg(all(not(feature = "esp32-c3"), feature = "esp-wroom-32"))]
     #[rustfmt::skip]
     let io_pins = (
         pins.gpio0,  // BOOT
@@ -82,7 +82,7 @@ fn main() -> anyhow::Result<()> {
         pins.gpio4,  // GDO0
     );
 
-    let button = PinDriver::input(io_pins.0.downgrade_input())?;
+    let button = PinDriver::input(io_pins.0.degrade_input(), Pull::Up)?;
     let driver = spi::SpiDriver::new(
         peripherals.spi2,
         io_pins.1,
@@ -90,9 +90,9 @@ fn main() -> anyhow::Result<()> {
         Some(io_pins.3),
         &spi::SpiDriverConfig::new(),
     )?;
-    let spi_cfg = spi::config::Config::new().baudrate(4.MHz().into());
+    let spi_cfg = spi::config::Config::new().baudrate(Hertz(4_000_000));
     let dev = spi::SpiDeviceDriver::new(&driver, Some(io_pins.4), &spi_cfg)?;
-    let gdo0 = PinDriver::input(io_pins.5.downgrade_input())?;
+    let gdo0 = PinDriver::input(io_pins.5.degrade_input(), Pull::Floating)?;
 
     // Create CC1101 radio
     let radio = Cc1101Radio::new(dev, gdo0);
@@ -128,7 +128,7 @@ fn main() -> anyhow::Result<()> {
     esp_idf_hal::reset::restart();
 }
 
-async fn poll_reset(mut state: Arc<Pin<Box<MyState>>>, button: PinDriver<'_, AnyInputPin, Input>) -> AppResult<()> {
+async fn poll_reset(mut state: Arc<Pin<Box<MyState>>>, button: PinDriver<'_, Input>) -> AppResult<()> {
     let mut uptime: usize = 0;
     loop {
         sleep(Duration::from_secs(2)).await;
@@ -148,7 +148,7 @@ async fn poll_reset(mut state: Arc<Pin<Box<MyState>>>, button: PinDriver<'_, Any
 
 async fn reset_button<'a>(
     state: &mut Arc<std::pin::Pin<Box<MyState>>>,
-    button: &PinDriver<'a, AnyInputPin, Input>,
+    button: &PinDriver<'a, Input>,
 ) -> AppResult<()> {
     let mut reset_cnt = CONFIG_RESET_COUNT;
 

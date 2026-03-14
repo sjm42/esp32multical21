@@ -2,37 +2,17 @@
 
 use crate::*;
 
+// Radio watchdog timeout: restart if no packet in set time
+const RADIO_WAIT_SECS: u64 = 600;
+
 pub async fn read_meter(state: Arc<Pin<Box<MyState>>>, mut radio: Cc1101Radio<'_>) -> AppResult<()> {
-    let mut cnt = 0;
-    let ntp = sntp::EspSntp::new_default()?;
-    sleep(Duration::from_secs(10)).await;
-
     loop {
-        if *state.wifi_up.read().await {
+        if *state.net_up.read().await {
             break;
         }
-
-        if cnt > 300 {
-            esp_idf_hal::reset::restart();
-        }
-        cnt += 1;
-        sleep(Duration::from_millis(200)).await;
+        sleep(Duration::from_secs(5)).await;
     }
-    info!("WiFi connected.");
-
-    cnt = 0;
-    loop {
-        if Utc::now().year() > 2020 && ntp.get_sync_status() == sntp::SyncStatus::Completed {
-            break;
-        }
-
-        if cnt > 300 {
-            esp_idf_hal::reset::restart();
-        }
-        cnt += 1;
-        sleep(Duration::from_millis(200)).await;
-    }
-    info!("NTP ok.");
+    info!("Network is up.");
 
     // Parse meter config
     let (meter_id, meter_key) = {
@@ -58,7 +38,7 @@ pub async fn read_meter(state: Arc<Pin<Box<MyState>>>, mut radio: Cc1101Radio<'_
 
     info!("Waiting for wMBus packets...");
     loop {
-        match radio.wait_for_packet().await? {
+        match radio.wait_for_packet(RADIO_WAIT_SECS).await? {
             Some(payload) => {
                 info!("Got wMBus packet ({} bytes), parsing...", payload.len());
                 match parse_frame(&payload, &meter_id, &meter_key) {
@@ -74,6 +54,7 @@ pub async fn read_meter(state: Arc<Pin<Box<MyState>>>, mut radio: Cc1101Radio<'_
             }
             None => {
                 // Watchdog timeout, restart radio
+                warn!("No packets received in {RADIO_WAIT_SECS} s, restarting radio...");
                 radio.restart_radio()?;
             }
         }

@@ -127,10 +127,10 @@ pub async fn run_esphome_api(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
     }
 
     loop {
-        if *state.wifi_up.read().await {
+        if *state.net_up.read().await {
             break;
         }
-        sleep(Duration::from_secs(3)).await;
+        sleep(Duration::from_secs(5)).await;
     }
 
     let listen = format!("0.0.0.0:{ESPHOME_API_PORT}");
@@ -157,7 +157,7 @@ async fn handle_client(state: Arc<Pin<Box<MyState>>>, mut stream: TcpStream) -> 
     let mut last_sent = BTreeMap::<u32, EntityStateValue>::new();
 
     loop {
-        match Box::pin(timeout(Duration::from_secs(60), read_frame(&mut stream))).await {
+        match Box::pin(timeout(Duration::from_secs(5), read_frame(&mut stream))).await {
             Ok(Ok((msg_type_raw, payload))) => match ApiMessageType::try_from(msg_type_raw) {
                 Ok(ApiMessageType::HelloRequest) => {
                     if let Some((client_info, major, minor)) = parse_hello_request(&payload) {

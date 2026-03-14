@@ -5,9 +5,7 @@ use crc::{CRC_32_ISCSI, Crc};
 use crate::*;
 
 pub const NVS_BUF_SIZE: usize = 256;
-
-pub const DEFAULT_API_PORT: u16 = 80;
-
+pub const HTTP_API_PORT: u16 = 80;
 const CONFIG_NAME: &str = "cfg";
 
 #[derive(Clone, Debug, Serialize, Deserialize, Template)]
@@ -96,7 +94,7 @@ impl MyConfig {
     pub fn from_nvs(nvs: &mut nvs::EspNvs<nvs::NvsDefault>) -> Option<Self> {
         let mut nvsbuf = [0u8; NVS_BUF_SIZE];
         info!("Reading up to {sz} bytes from nvs...", sz = NVS_BUF_SIZE);
-        let b = match nvs.get_raw(CONFIG_NAME, &mut nvsbuf) {
+        let b = match nvs.get_blob(CONFIG_NAME, &mut nvsbuf) {
             Err(e) => {
                 error!("Nvs read error {e:?}");
                 return None;
@@ -131,7 +129,7 @@ impl MyConfig {
             .map_err(|e| AppError::Message(format!("Cannot encode config to buffer {e:?}")))?;
         info!("Encoded config to {sz} bytes. Saving to nvs...", sz = nvsdata.len());
 
-        nvs.set_raw(CONFIG_NAME, nvsdata)
+        nvs.set_blob(CONFIG_NAME, nvsdata)
             .map_err(|e| AppError::Message(format!("Cannot save to nvs: {e:?}")))?;
         info!("Config saved.");
         Ok(())

@@ -1,4 +1,4 @@
-// mqtt_sender
+// mqtt_sender.rs
 
 use crate::*;
 
@@ -12,10 +12,10 @@ pub async fn run_mqtt(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
     }
 
     loop {
-        if *state.wifi_up.read().await {
+        if *state.net_up.read().await {
             break;
         }
-        sleep(Duration::from_secs(1)).await;
+        sleep(Duration::from_secs(5)).await;
     }
 
     let url = state.config.read().await.mqtt_url.clone();

@@ -85,19 +85,13 @@ const LEGACY_PROFILE: &[(CcConfig, u8)] = &[
     // (CcConfig::DEVIATN, 0x44), // set_deviation()
 ];
 
-// Radio watchdog timeout: restart if no packet in set time
-const WATCHDOG_SECS: u64 = 600;
-
 pub struct Cc1101Radio<'a> {
     spi: spi::SpiDeviceDriver<'a, &'a esp_idf_hal::spi::SpiDriver<'a>>,
-    gdo0: PinDriver<'a, AnyInputPin, Input>,
+    gdo0: PinDriver<'a, Input>,
 }
 
 impl<'a> Cc1101Radio<'a> {
-    pub fn new(
-        spi: spi::SpiDeviceDriver<'a, &'a esp_idf_hal::spi::SpiDriver<'a>>,
-        gdo0: PinDriver<'a, AnyInputPin, Input>,
-    ) -> Self {
+    pub fn new(spi: spi::SpiDeviceDriver<'a, &'a esp_idf_hal::spi::SpiDriver<'a>>, gdo0: PinDriver<'a, Input>) -> Self {
         Self { spi, gdo0 }
     }
 
@@ -138,24 +132,24 @@ impl<'a> Cc1101Radio<'a> {
         // Go to IDLE
         self.strobe(CcCommand::SIDLE)?;
         // Wait for IDLE state
-        for _ in 0..35 {
+        for _ in 0..20 {
             let state = self.read_status(CcStatus::MARCSTATE)? & 0x1F;
             if state == MARC_IDLE {
                 break;
             }
-            FreeRtos::delay_ms(3);
+            FreeRtos::delay_ms(5);
         }
         // Flush RX FIFO
         self.strobe(CcCommand::SFRX)?;
         // Start RX
         self.strobe(CcCommand::SRX)?;
         // Wait for RX state
-        for _ in 0..35 {
+        for _ in 0..20 {
             let state = self.read_status(CcStatus::MARCSTATE)? & 0x1F;
             if state == MARC_RX {
                 break;
             }
-            FreeRtos::delay_ms(3);
+            FreeRtos::delay_ms(5);
         }
         Ok(())
     }
@@ -223,11 +217,11 @@ impl<'a> Cc1101Radio<'a> {
     }
 
     /// Wait for a wMBus packet. Returns `Ok(None)` on watchdog timeout.
-    pub async fn wait_for_packet(&mut self) -> Result<Option<Vec<u8>>, Cc1101RadioError> {
-        match Box::pin(timeout(Duration::from_secs(WATCHDOG_SECS), self.poll_gdo0())).await {
+    pub async fn wait_for_packet(&mut self, timeout_s: u64) -> Result<Option<Vec<u8>>, Cc1101RadioError> {
+        match Box::pin(timeout(Duration::from_secs(timeout_s), self.poll_gdo0())).await {
             Ok(packet) => Ok(Some(packet?)),
             Err(_) => {
-                warn!("CC1101: Watchdog timeout ({}s) with no packets received", WATCHDOG_SECS);
+                warn!("CC1101: Watchdog timeout ({timeout_s} s) with no packets received");
                 Ok(None)
             }
         }

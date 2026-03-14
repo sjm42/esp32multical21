@@ -14,9 +14,10 @@ pub use askama::Template;
 pub use chrono::*;
 pub use esp_idf_hal::{
     delay::FreeRtos,
-    gpio::{AnyInputPin, Input, InputPin, PinDriver},
-    prelude::*,
+    gpio::{AnyInputPin, Input, InputPin, PinDriver, Pull},
+    peripherals::Peripherals,
     spi,
+    units::Hertz,
 };
 pub use esp_idf_svc::{
     eventloop::{EspEventLoop, System},
@@ -41,7 +42,7 @@ pub const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(feature = "esp32-c3")]
 pub const HW_TARGET: &str = "ESP32-C3";
-#[cfg(feature = "esp-wroom-32")]
+#[cfg(all(not(feature = "esp32-c3"), feature = "esp-wroom-32"))]
 pub const HW_TARGET: &str = "ESP32-WROOM";
 
 pub type AppResult<T> = Result<T, AppError>;

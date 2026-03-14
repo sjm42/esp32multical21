@@ -61,16 +61,33 @@ impl<'a> WifiLoop<'a> {
             sleep(Duration::from_secs(5)).await;
             esp_idf_hal::reset::restart();
         }
-
-        sleep(Duration::from_secs(5)).await;
+        info!("WiFi is connected.");
+        sleep(Duration::from_secs(2)).await;
 
         let netif = self.wifi.as_ref().unwrap().wifi().sta_netif();
         let ip_info = netif.get_ip_info()?;
         *self.state.if_index.write().await = netif.get_index();
         *self.state.ip_addr.write().await = ip_info.ip;
         *self.state.ping_ip.write().await = Some(ip_info.subnet.gateway);
-        *self.state.wifi_up.write().await = true;
 
+        // wait for NTP synchronization to complete
+        let ntp = sntp::EspSntp::new_default()?;
+        sleep(Duration::from_secs(5)).await;
+        let mut cnt = 0;
+        loop {
+            if Utc::now().year() > 2020 && ntp.get_sync_status() == sntp::SyncStatus::Completed {
+                break;
+            }
+
+            if cnt > 120 {
+                esp_idf_hal::reset::restart();
+            }
+            cnt += 1;
+            sleep(Duration::from_millis(1000)).await;
+        }
+        info!("NTP ok.");
+
+        *self.state.net_up.write().await = true;
         Box::pin(self.stay_connected()).await
     }
 
