@@ -16,6 +16,10 @@ Runs on Tokio async runtime on top of FreeRTOS.
 
 ![Web UI screenshot 3](images/screenshot-3.png)
 
+The HTML is rendered from Askama templates in `templates/`. Static assets live in `static/` and are gzip-compressed
+at build time by `build.rs`, then embedded into the firmware image and served with `Content-Encoding: gzip` to reduce
+flash usage.
+
 ## Hardware
 
 ### Components
@@ -177,9 +181,9 @@ Served by Axum on port 80.
 | Method | Path           | Description                                                                    |
 |--------|----------------|--------------------------------------------------------------------------------|
 | GET    | `/`            | Web configuration UI (Askama template)                                         |
-| GET    | `/favicon.ico` | Favicon                                                                        |
-| GET    | `/form.js`     | Web UI JavaScript                                                              |
-| GET    | `/index.css`   | Web UI stylesheet                                                              |
+| GET    | `/favicon.ico` | Favicon, served from build-time gzip-compressed embedded asset                 |
+| GET    | `/form.js`     | Web UI JavaScript, served from build-time gzip-compressed embedded asset       |
+| GET    | `/index.css`   | Web UI stylesheet, served from build-time gzip-compressed embedded asset       |
 | GET    | `/uptime`      | `{"uptime": <seconds>}`                                                        |
 | GET    | `/conf`        | `{"ok": true, "config": {...}}`                                                |
 | POST   | `/conf`        | Save config and reboot. JSON response: `{"ok": <bool>, "message": "<text>"}`   |
@@ -188,10 +192,13 @@ Served by Axum on port 80.
 | POST   | `/fw`          | OTA firmware update (form field `url`)                                         |
 
 CORS preflight (`OPTIONS`) is implemented for `/conf` and `/fw`.
+Browsers request the static endpoints normally; the firmware replies with precompressed gzip payloads plus the
+appropriate `Content-Type` and `Content-Encoding: gzip` headers.
 
 ## OTA Firmware Update
 
-The flash is partitioned into two 1984 KB OTA slots (`ota_0`, `ota_1`). To update:
+The flash is partitioned into two 1984 KB OTA slots (`ota_0`, `ota_1`). OTA update downloads are currently HTTP-only.
+To update:
 
 1. Host the new firmware binary on an HTTP server
 2. POST to `/fw` with form field `url` pointing to the binary
@@ -333,6 +340,9 @@ All tasks share a single `Arc<Pin<Box<MyState>>>` instance with mostly `RwLock`-
 
 | File                         | Purpose                                                    |
 |------------------------------|------------------------------------------------------------|
+| `build.rs`                   | Build metadata plus gzip compression of embedded static assets |
+| `static/`                    | Web UI static files (`favicon.ico`, `form.js`, `index.css`)   |
+| `templates/`                 | Askama HTML templates                                         |
 | `src/bin/esp32multical21.rs` | Entry point, hardware init, task orchestration             |
 | `src/lib.rs`                 | Re-exports, common types, `FW_VERSION` constant            |
 | `src/state.rs`               | `MyState` struct — shared concurrent state                 |
