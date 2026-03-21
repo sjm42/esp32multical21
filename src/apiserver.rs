@@ -15,6 +15,44 @@ use embedded_svc::http::client::Client as HttpClient;
 
 use crate::*;
 
+macro_rules! static_handler {
+    ($fn_name:ident, $path:literal, $content_type:literal, $bytes:expr) => {
+        async fn $fn_name(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
+            let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
+            info!("#{cnt} {}", $path);
+
+            (
+                StatusCode::OK,
+                [
+                    (header::CONTENT_TYPE, $content_type),
+                    (header::CONTENT_ENCODING, "gzip"),
+                ],
+                $bytes.to_vec(),
+            )
+                .into_response()
+        }
+    };
+}
+
+static_handler!(
+    get_favicon,
+    "/favicon.ico",
+    "image/vnd.microsoft.icon",
+    include_bytes!(concat!(env!("OUT_DIR"), "/favicon.ico.gz"))
+);
+static_handler!(
+    get_form_js,
+    "/form.js",
+    "text/javascript; charset=utf-8",
+    include_bytes!(concat!(env!("OUT_DIR"), "/form.js.gz"))
+);
+static_handler!(
+    get_index_css,
+    "/index.css",
+    "text/css; charset=utf-8",
+    include_bytes!(concat!(env!("OUT_DIR"), "/index.css.gz"))
+);
+
 pub async fn run_api_server(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
     loop {
         if *state.net_up.read().await {
@@ -75,40 +113,6 @@ pub async fn get_index(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<
         Ok(s) => s,
     };
     (StatusCode::OK, Html(index)).into_response()
-}
-
-pub async fn get_favicon(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
-    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
-    info!("#{cnt} get_favicon()");
-
-    let favicon = include_bytes!("favicon.ico");
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "image/vnd.microsoft.icon")],
-        favicon.to_vec(),
-    )
-        .into_response()
-}
-
-pub async fn get_form_js(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
-    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
-    info!("#{cnt} get_form_js()");
-
-    let formjs = include_bytes!("form.js");
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/javascript")],
-        formjs.to_vec(),
-    )
-        .into_response()
-}
-
-pub async fn get_index_css(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
-    let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
-    info!("#{cnt} get_index_css()");
-
-    let indexcss = include_bytes!("index.css");
-    (StatusCode::OK, [(header::CONTENT_TYPE, "text/css")], indexcss.to_vec()).into_response()
 }
 
 pub async fn get_uptime(State(state): State<Arc<Pin<Box<MyState>>>>) -> (StatusCode, Json<Uptime>) {

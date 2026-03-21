@@ -2,7 +2,7 @@
 
 [package]
 name = "esp32multical21"
-version = "1.4.6"
+version = "1.4.7"
 authors = ["Sami J. Mäkinen <sjm@iki.fi>"]
 edition = "2024"
 
@@ -43,6 +43,7 @@ thiserror = "2.0"
 anyhow = "1.0"
 build-data = "0.3"
 embuild = "0.33"
+flate2 = "1.1"
 
 
 [profile.release]
