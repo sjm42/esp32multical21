@@ -10,6 +10,13 @@ This repository contains Rust firmware for ESP32 + CC1101.
 - `partitions.csv`, `sdkconfig.defaults`: flash layout and ESP-IDF defaults.
 - Helper scripts: `flash` (flash+monitor) and `makeimage` (build + `firmware.bin` export).
 
+## Current Firmware Behavior
+- The firmware supports both station mode and a fixed AP-mode recovery path.
+- AP mode is requested by a short press of the board button and comes up as SSID `esp32multical21` on `10.42.42.1/24`.
+- A long press of about 5 seconds performs factory reset; while held, the LED blinks, and once factory reset starts the LED stays on until reboot.
+- In AP mode, the local HTTP config UI stays available, while meter reading, MQTT, and ESPHome API are disabled.
+- GPIO mappings are feature-gated in `src/bin/esp32multical21.rs`; current LED pins are `GPIO8` active-low on `esp32-c3` and `GPIO2` active-high on `esp-wroom-32`.
+
 ## Build, Test, and Development Commands
 Run from repository root:
 
@@ -31,7 +38,7 @@ Run from repository root:
 There is currently no dedicated `tests/` suite. For each change:
 
 - Run `cargo check` and `cargo clippy --all-targets --all-features`.
-- Validate on hardware when behavior touches radio, Wi-Fi, OTA, or MQTT.
+- Validate on hardware when behavior touches radio, Wi-Fi, AP mode, button handling, LED behavior, OTA, MQTT, or ESPHome API.
 - If adding pure parsing/business logic, add inline unit tests (`#[cfg(test)]`) near the module.
 
 ## Commit & Pull Request Guidelines

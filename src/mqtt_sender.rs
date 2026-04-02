@@ -3,7 +3,7 @@
 use crate::*;
 
 pub async fn run_mqtt(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
-    if !state.config.read().await.mqtt_enable {
+    if state.ap_mode || !state.config.read().await.mqtt_enable {
         info!("MQTT is disabled.");
         // we cannot return, otherwise tokio::select in main() will exit
         loop {

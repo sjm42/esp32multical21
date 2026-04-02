@@ -14,7 +14,7 @@ pub use askama::Template;
 pub use chrono::*;
 pub use esp_idf_hal::{
     delay::FreeRtos,
-    gpio::{AnyInputPin, Input, InputPin, PinDriver, Pull},
+    gpio::{AnyInputPin, Input, InputPin, Output, PinDriver, Pull},
     peripherals::Peripherals,
     spi,
     units::Hertz,
@@ -39,11 +39,19 @@ pub use tokio::{
 };
 
 pub const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const AP_MODE_SSID: &str = "esp32multical21";
+pub const AP_MODE_IP_ADDR: net::Ipv4Addr = net::Ipv4Addr::new(10, 42, 42, 1);
+pub const AP_MODE_IP_MASK: u8 = 24;
 
 #[cfg(feature = "esp32-c3")]
 pub const HW_TARGET: &str = "ESP32-C3";
 #[cfg(all(not(feature = "esp32-c3"), feature = "esp-wroom-32"))]
 pub const HW_TARGET: &str = "ESP32-WROOM";
+
+#[cfg(feature = "esp32-c3")]
+pub const LED_ACTIVE_LOW: bool = true;
+#[cfg(all(not(feature = "esp32-c3"), feature = "esp-wroom-32"))]
+pub const LED_ACTIVE_LOW: bool = false;
 
 pub type AppResult<T> = Result<T, AppError>;
 

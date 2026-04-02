@@ -2,7 +2,10 @@
 
 use crate::*;
 
+pub const AP_MODE_NVS_KEY: &str = "boot_ap";
+
 pub struct MyState {
+    pub ap_mode: bool,
     pub ota_slot: String,
     pub config: RwLock<MyConfig>,
     pub uptime: RwLock<usize>,
@@ -17,12 +20,20 @@ pub struct MyState {
     pub latest_data: RwLock<Option<MeterReading>>,
     pub data_updated: RwLock<bool>,
     pub nvs: RwLock<nvs::EspNvs<nvs::NvsDefault>>,
+    pub led: RwLock<PinDriver<'static, Output>>,
     pub reset: RwLock<bool>,
 }
 
 impl MyState {
-    pub fn new(config: MyConfig, nvs: nvs::EspNvs<nvs::NvsDefault>, ota_slot: String) -> Self {
+    pub fn new(
+        ap_mode: bool,
+        config: MyConfig,
+        nvs: nvs::EspNvs<nvs::NvsDefault>,
+        ota_slot: String,
+        led: PinDriver<'static, Output>,
+    ) -> Self {
         MyState {
+            ap_mode,
             ota_slot,
             config: RwLock::new(config),
             uptime: RwLock::new(0),
@@ -37,8 +48,31 @@ impl MyState {
             latest_data: RwLock::new(None),
             data_updated: RwLock::new(false),
             nvs: RwLock::new(nvs),
+            led: RwLock::new(led),
             reset: RwLock::new(false),
         }
+    }
+
+    pub async fn set_led(&self, enabled: bool) -> AppResult<()> {
+        let mut led = self.led.write().await;
+        if enabled != LED_ACTIVE_LOW {
+            led.set_high()?;
+        } else {
+            led.set_low()?;
+        }
+        Ok(())
+    }
+
+    pub async fn led_on(&self) -> AppResult<()> {
+        self.set_led(true).await
+    }
+    pub async fn led_off(&self) -> AppResult<()> {
+        self.set_led(false).await
+    }
+
+    pub async fn request_ap_mode_on_next_boot(&self) -> AppResult<()> {
+        self.nvs.write().await.set_u8(AP_MODE_NVS_KEY, 1)?;
+        Ok(())
     }
 }
 // EOF
