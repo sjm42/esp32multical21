@@ -131,6 +131,7 @@ fn main() -> anyhow::Result<()> {
                 _ = Box::pin(run_mqtt(shared_state.clone())) => { error!("run_mqtt() ended."); }
                 _ = Box::pin(run_api_server(shared_state.clone())) => { error!("run_api_server() ended."); }
                 _ = Box::pin(run_esphome_api(shared_state.clone())) => { error!("run_esphome_api() ended."); }
+                _ = Box::pin(run_mdns(shared_state.clone())) => { error!("run_mdns() ended."); }
                 _ = Box::pin(wifi_loop.run(wifidriver, sysloop, timer)) => { error!("wifi_loop.run() ended."); }
                 _ = Box::pin(pinger(shared_state.clone())) => { error!("pinger() ended."); }
             };
@@ -215,6 +216,27 @@ async fn reset_button<'a>(
     }
 
     Ok(())
+}
+
+async fn run_mdns(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
+    // Wait for WiFi to be up before starting mDNS
+    loop {
+        if *state.net_up.read().await {
+            break;
+        }
+        sleep(Duration::from_millis(500)).await;
+    }
+
+    let mut mdns = EspMdns::take()?;
+    mdns.set_hostname("esp32multical21")?;
+    mdns.set_instance_name(&format!("Multical21 Water Meter ({})", FW_VERSION))?;
+    mdns.add_service(None, "_http", "_tcp", 80, &[])?;
+    info!("mDNS started: http://esp32multical21.local/");
+
+    // Keep mDNS alive forever
+    loop {
+        sleep(Duration::from_secs(60)).await;
+    }
 }
 
 async fn pinger(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {

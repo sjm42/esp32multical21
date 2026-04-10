@@ -83,6 +83,30 @@ cargo install espmonitor espup ldproxy flip-link cargo-espflash espflash
 cargo install cargo-binutils cargo-embed cargo-flash cargo-generate cargo-update probe-run
 ```
 
+### Docker Build (no local toolchain required)
+
+`Dockerfile` and `docker-build.sh` allow building and optionally flashing without
+installing the ESP-IDF toolchain locally.
+
+```bash
+# Build the Docker image once
+docker build -t esp32multical21-builder .
+
+# Build firmware (and flash if /dev/ttyACM0 is present)
+./docker-build.sh
+
+# Build only, skip flashing
+./docker-build.sh --no-flash
+```
+
+The build caches ESP-IDF and Cargo artifacts in named Docker volumes
+(`esp32-espressif-cache`, `esp32-cargo-cache`) so subsequent builds are fast.
+WiFi credentials can be passed as build args:
+
+```bash
+docker build --build-arg WIFI_SSID=myssid --build-arg WIFI_PASS=mypass -t esp32multical21-builder .
+```
+
 ### Utility Scripts
 
 Optional helper environment file:
@@ -246,6 +270,15 @@ ota_0,    app,  ota_0, ,        1984K
 ota_1,    app,  ota_1, ,        1984K
 ```
 
+## mDNS
+
+After WiFi connects the device registers itself in mDNS as `esp32multical21.local` and
+announces an `_http._tcp` service on port 80.
+The device is then reachable at `http://esp32multical21.local/` on the local network
+without knowing its IP address.
+
+The same hostname is also sent in DHCP requests so most routers assign a named lease.
+
 ## Watchdogs & Recovery
 
 - **Reset / setup button**:
@@ -347,7 +380,7 @@ The meter ID is encoded in little-endian BCD on the wire
 ## Architecture
 
 The binary entry point (`src/bin/esp32multical21.rs`) initializes hardware, loads config and AP-mode boot flags from
-NVS, and runs seven concurrent tasks under `tokio::select!` (service tasks wait until networking is up):
+NVS, and runs eight concurrent tasks under `tokio::select!` (service tasks wait until networking is up):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -361,6 +394,7 @@ NVS, and runs seven concurrent tasks under `tokio::select!` (service tasks wait 
 │  run_api_server() Axum HTTP server (port 80)                    │
 │  run_esphome_api() ESPHome native API server (port 6053)         │
 │                   (disabled in AP mode)                         │
+│  run_mdns()       mDNS advertisement (esp32multical21.local)    │
 │  wifi_loop.run()  WiFi station/AP-mode manager                  │
 │  pinger()         Ping gateway every 5 min, reboot on failure   │
 └─────────────────────────────────────────────────────────────────┘
@@ -404,7 +438,7 @@ All tasks share a single `Arc<Pin<Box<MyState>>>` instance with mostly `RwLock`-
 4. Initialize OTA subsystem, mark running slot valid (prevents rollback)
 5. Configure SPI bus and CC1101 radio, set up GPIO for reset button and onboard LED
 6. Create WiFi driver and shared `MyState`
-7. Launch Tokio runtime with seven concurrent tasks
+7. Launch Tokio runtime with eight concurrent tasks
 8. Enter station mode or AP mode depending on the boot flag, then start the corresponding services
 
 ## License
