@@ -229,7 +229,7 @@ async fn run_mdns(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
 
     let mut mdns = EspMdns::take()?;
     mdns.set_hostname("esp32multical21")?;
-    mdns.set_instance_name(&format!("Multical21 Water Meter ({})", FW_VERSION))?;
+    mdns.set_instance_name(format!("Multical21 Water Meter ({})", FW_VERSION))?;
     mdns.add_service(None, "_http", "_tcp", 80, &[])?;
     info!("mDNS started: http://esp32multical21.local/");
 

@@ -37,7 +37,6 @@ impl<'a> WifiLoop<'a> {
             let ipv4_config = if config.v4dhcp {
                 ipv4::ClientConfiguration::DHCP(ipv4::DHCPClientSettings {
                     hostname: Some("esp32multical21".try_into().unwrap()),
-                    ..Default::default()
                 })
             } else {
                 ipv4::ClientConfiguration::Fixed(ipv4::ClientSettings {
