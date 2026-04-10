@@ -5,13 +5,11 @@ ENV IDF_TOOLS_PATH=/cache/espressif
 ENV CARGO_HOME=/cache/cargo
 
 # Install rust-src (required by .cargo/config.toml build-std)
-RUN rustup component add rust-src
+RUN rustup component add rust-src clippy
 
 WORKDIR /project
 
-ARG WIFI_SSID=internet
-ARG WIFI_PASS=
-ENV WIFI_SSID=${WIFI_SSID}
-ENV WIFI_PASS=${WIFI_PASS}
+ENV WIFI_SSID=internet
+ENV WIFI_PASS=
 
 CMD ["cargo", "build", "-r"]
