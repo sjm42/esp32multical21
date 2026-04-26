@@ -22,7 +22,7 @@ pub use esp_idf_hal::{
 pub use esp_idf_svc::{
     eventloop::{EspEventLoop, System},
     http::client::EspHttpConnection,
-    io, ipv4, mqtt,
+    io, ipv4, mdns::EspMdns, mqtt,
     netif::{self, EspNetif},
     nvs,
     ota::EspOta,

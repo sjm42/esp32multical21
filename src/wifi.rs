@@ -1,6 +1,7 @@
 // wifi.rs
 
 use embedded_svc::wifi::{AccessPointConfiguration, AuthMethod, ClientConfiguration, Configuration};
+use esp_idf_svc::wifi::WifiEvent;
 
 use crate::*;
 
@@ -18,12 +19,25 @@ impl<'a> WifiLoop<'a> {
     ) -> AppResult<()> {
         info!("Initializing Wi-Fi...");
 
+        let _disconnect_sub = sysloop.subscribe::<WifiEvent, _>(|event| {
+            if let WifiEvent::StaDisconnected(d) = event {
+                warn!(
+                    "WiFi disconnected: reason={} ({}) rssi={}",
+                    d.reason(),
+                    wifi_disconnect_reason(d.reason()),
+                    d.rssi()
+                );
+            }
+        })?;
+
         let net_if = if self.state.ap_mode {
             EspNetif::new_with_conf(&netif::NetifConfiguration::wifi_default_client())?
         } else {
             let config = self.state.config.read().await.clone();
             let ipv4_config = if config.v4dhcp {
-                ipv4::ClientConfiguration::DHCP(ipv4::DHCPClientSettings::default())
+                ipv4::ClientConfiguration::DHCP(ipv4::DHCPClientSettings {
+                    hostname: Some("esp32multical21".try_into().unwrap()),
+                })
             } else {
                 ipv4::ClientConfiguration::Fixed(ipv4::ClientSettings {
                     ip: config.v4addr,
@@ -199,6 +213,21 @@ impl<'a> WifiLoop<'a> {
 
         wifi.set_configuration(&Configuration::Client(client_cfg))?;
 
+        // esp-idf-svc hardcodes pmf_cfg.capable=false, but WPA2/WPA3 mixed-mode APs
+        // require the client to advertise PMF capability or the 4-way handshake times out.
+        unsafe {
+            let mut cfg: esp_idf_sys::wifi_config_t = core::mem::zeroed();
+            esp_idf_sys::esp!(esp_idf_sys::esp_wifi_get_config(
+                esp_idf_sys::wifi_interface_t_WIFI_IF_STA,
+                &mut cfg,
+            ))?;
+            cfg.sta.pmf_cfg.capable = true;
+            esp_idf_sys::esp!(esp_idf_sys::esp_wifi_set_config(
+                esp_idf_sys::wifi_interface_t_WIFI_IF_STA,
+                &mut cfg,
+            ))?;
+        }
+
         info!("WiFi driver starting...");
         Box::pin(wifi.start()).await?;
 
@@ -224,14 +253,17 @@ impl<'a> WifiLoop<'a> {
             // way too difficult to showcase the core logic of an example and have
             // a proper Wi-Fi event loop without a robust async runtime.  Fortunately, we can do it
             // now!
-            let timeout = if initial { Some(Duration::from_secs(30)) } else { None };
-            Box::pin(wifi.wifi_wait(|w| w.is_up(), timeout)).await.ok();
+            Box::pin(wifi.wifi_wait(|w| w.is_up(), None)).await.ok();
 
             info!("WiFi connecting...");
             Box::pin(wifi.connect()).await.ok();
 
+            // Apply the 30s timeout here — this is the call that actually waits for the
+            // connection. The previous wifi_wait returns immediately at boot since WiFi
+            // isn't up yet, so the timeout there was effectively useless.
+            let timeout = if initial { Some(Duration::from_secs(30)) } else { None };
             info!("WiFi waiting for association...");
-            match Box::pin(wifi.ip_wait_while(|w| w.is_up().map(|s| !s), None)).await {
+            match Box::pin(wifi.ip_wait_while(|w| w.is_up().map(|s| !s), timeout)).await {
                 Ok(_) => {}
                 Err(e) => {
                     error!("WiFi error: {e:?}");
@@ -252,4 +284,36 @@ impl<'a> WifiLoop<'a> {
         }
     }
 }
+fn wifi_disconnect_reason(r: u16) -> &'static str {
+    match r {
+        1 => "UNSPECIFIED",
+        2 => "AUTH_EXPIRE",
+        3 => "AUTH_LEAVE",
+        4 => "DISASSOC_INACTIVE",
+        5 => "DISASSOC_AP_BUSY",
+        6 => "6WAY_HANDSHAKE_TIMEOUT",
+        7 => "DISASSOC_STA_HAS_LEFT",
+        8 => "STA_DISASSOC",
+        15 => "4WAY_HANDSHAKE_TIMEOUT",
+        16 => "GROUP_KEY_UPDATE_TIMEOUT",
+        17 => "IE_IN_4WAY_DIFFERS",
+        18 => "GROUP_CIPHER_INVALID",
+        19 => "PAIRWISE_CIPHER_INVALID",
+        20 => "AKMP_INVALID",
+        21 => "UNSUPP_RSN_IE_VERSION",
+        22 => "INVALID_RSN_IE_CAP",
+        23 => "IEEE_802_1X_AUTH_FAILED",
+        24 => "CIPHER_SUITE_REJECTED",
+        200 => "BEACON_TIMEOUT",
+        201 => "NO_AP_FOUND",
+        202 => "AUTH_FAIL",
+        203 => "ASSOC_FAIL",
+        204 => "HANDSHAKE_TIMEOUT",
+        205 => "CONNECTION_FAIL",
+        206 => "AP_TSF_RESET",
+        207 => "ROAMING",
+        _ => "UNKNOWN",
+    }
+}
+
 // EOF

@@ -59,4 +59,9 @@ debug = true
 opt-level = 2
 lto = "off"
 
+[package.metadata.esp-idf-sys]
+extra_components = [
+  { remote_component = { name = "espressif/mdns", version = "*" } }
+]
+
 # EOF
