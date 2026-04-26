@@ -92,20 +92,23 @@ installing the ESP-IDF toolchain locally.
 # Build the Docker image once
 docker build -t esp32multical21-builder .
 
-# Build firmware (and flash if /dev/ttyACM0 is present)
+# Build firmware only
 ./docker-build.sh
 
-# Build only, skip flashing
-./docker-build.sh --no-flash
+# Build, flash, and monitor on /dev/ttyACM0
+./docker-build.sh --flash
+
+# Monitor only on /dev/ttyACM0
+./docker-build.sh --monitor
 ```
 
 The build caches ESP-IDF and Cargo artifacts in named Docker volumes
 (`esp32-espressif-cache`, `esp32-cargo-cache`) so subsequent builds are fast.
-WiFi credentials can be passed as build args:
+If present, `docker-build.sh` sources `env.sh` and passes `WIFI_SSID` and `WIFI_PASS` into the build container.
+The Docker image itself defaults to `WIFI_SSID=internet` and an empty `WIFI_PASS`.
 
-```bash
-docker build --build-arg WIFI_SSID=myssid --build-arg WIFI_PASS=mypass -t esp32multical21-builder .
-```
+The Docker helper currently targets the default ESP32-C3 build. Use the native `flash_wroom32` and
+`make_ota_image_wroom32` helpers for ESP-WROOM-32 builds.
 
 ### Utility Scripts
 
@@ -177,7 +180,7 @@ native API are disabled.
 ## LED Behavior
 
 - Normal boot: LED is turned off at async startup
-- Valid meter reading: LED blinks for 500 ms
+- Valid meter reading: LED turns on for 2 seconds
 - Button held down: LED blinks while the button remains pressed
 - AP mode: LED stays on continuously
 - Factory reset trigger reached: LED stays on until reboot
@@ -287,7 +290,7 @@ The same hostname is also sent in DHCP requests so most routers assign a named l
   - While held, the LED blinks; once factory reset starts, the LED stays on until reboot
   - Button GPIO is `GPIO9` on ESP32-C3 and `GPIO0` on ESP32-WROOM-32
 - **WiFi watchdog**: If initial WiFi connection fails within 30 seconds, the device reboots
-- **NTP watchdog**: If SNTP sync does not complete within ~60 seconds after WiFi, the device reboots
+- **NTP watchdog**: If SNTP sync does not complete within about 125 seconds after WiFi, the device reboots
 - **Ping watchdog**: Every 5 minutes, pings the gateway 3 times. If all fail, reboots
 - **Radio watchdog**: If no packet is received for 10 minutes, the CC1101 is reinitialized
 - **OTA rollback**: If new firmware fails to mark itself valid, the bootloader reverts to the previous slot
@@ -304,7 +307,7 @@ The same hostname is also sent in DHCP requests so most routers assign a named l
     - `esp-wroom-32` maps button/SPI/GDO0/LED to GPIO0/18/23/19/5/4/2
     - LED polarity is target-specific: active low on `esp32-c3`, active high on `esp-wroom-32`
 - **Release profile**: `opt-level = "z"` (size-optimized), fat LTO, single codegen unit
-- **ESP-IDF**: v5.4.3, main task stack 20 KB, FreeRTOS tick rate 1 kHz
+- **ESP-IDF**: v5.5.4, main task stack 32 KB, system event task stack 8 KB, FreeRTOS tick rate 1 kHz
 - **Clippy**: `future-size-threshold = 128` to catch oversized futures
 
 ### Meter Reading Response

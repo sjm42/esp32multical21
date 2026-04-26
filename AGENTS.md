@@ -8,7 +8,7 @@ This repository contains Rust firmware for ESP32 + CC1101.
 - `templates/`: Askama HTML templates used by the web UI.
 - `.cargo/config.toml`: chip target, runner, and ESP-IDF build settings.
 - `partitions.csv`, `sdkconfig.defaults`: flash layout and ESP-IDF defaults.
-- Helper scripts: `flash` (flash+monitor) and `makeimage` (build + `firmware.bin` export).
+- Helper scripts: `flash_c3`, `flash_wroom32`, `make_ota_image_c3`, `make_ota_image_wroom32`, and `docker-build.sh`.
 
 ## Current Firmware Behavior
 - The firmware supports both station mode and a fixed AP-mode recovery path.
@@ -20,12 +20,15 @@ This repository contains Rust firmware for ESP32 + CC1101.
 ## Build, Test, and Development Commands
 Run from repository root:
 
-- `source env.sh`: set build-time defaults (`MCU`, `WIFI_SSID`, `WIFI_PASS`, `API_PORT`).
+- `source env.sh`: set build-time defaults (`MCU`, `WIFI_SSID`, `WIFI_PASS`); HTTP listens on fixed port 80.
 - `cargo build`: debug build for configured target.
 - `cargo build -r`: release build (size-optimized, LTO enabled).
 - `cargo run -r -- --baud 921600`: build, flash, and open monitor via `espflash`.
-- `./flash`: shortcut for the same release flash flow.
-- `./makeimage`: produce `firmware.bin` for OTA/manual distribution.
+- `./flash_c3`: shortcut for the default ESP32-C3 release flash flow.
+- `./flash_wroom32`: build, flash, and monitor an ESP-WROOM-32 using `cargo +esp`.
+- `./make_ota_image_c3`: produce `firmware-c3.bin` for OTA/manual distribution.
+- `./make_ota_image_wroom32`: produce `firmware-wroom32.bin` for OTA/manual distribution.
+- `./docker-build.sh`: Dockerized ESP32-C3 release build; use `--flash` to flash and monitor.
 - `cargo clippy --all-targets --all-features`: lint before submitting changes.
 
 ## Coding Style & Naming Conventions

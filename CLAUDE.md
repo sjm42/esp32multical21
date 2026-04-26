@@ -9,14 +9,17 @@ ESP32 Multical21 — a Rust embedded IoT device for ESP32-C3 (default) or ESP-WR
 ## Build & Flash Commands
 
 ```bash
-# Source environment variables (WiFi credentials, API port, MCU selection)
+# Source environment variables (WiFi credentials and MCU selection; HTTP is fixed on port 80)
 source env.sh
 
 # Build (debug)
 cargo build
 
-# Build release and flash to device at 921600 baud (shortcut: ./flash)
+# Build release and flash to ESP32-C3
 cargo run -r -- --baud 921600
+
+# Shortcut for the default ESP32-C3 release flash flow
+./flash_c3
 
 # Build only (release)
 cargo build -r
@@ -24,23 +27,31 @@ cargo build -r
 # Clippy lint
 cargo clippy --all-targets --all-features
 
+# Build release OTA images
+./make_ota_image_c3
+./make_ota_image_wroom32
+
 # Target ESP-WROOM-32 instead of the default ESP32-C3
-cargo build --features esp-wroom-32 --no-default-features
+MCU=esp32 cargo +esp build -r --target xtensa-esp32-espidf --no-default-features --features=esp-wroom-32
+
+# Build, flash, and monitor ESP-WROOM-32 with the ESP toolchain
+./flash_wroom32
 ```
 
-The build target is `riscv32imc-esp-espidf` (configured in `.cargo/config.toml`). The toolchain is nightly with `rust-src` for custom std builds against ESP-IDF v5.4.3. Flash uses dual OTA partition table (`partitions.csv`) with `--erase-parts otadata` to reset OTA tracking on fresh flash.
+The default build target is `riscv32imc-esp-espidf` (configured in `.cargo/config.toml`). The toolchain is nightly with `rust-src` for custom std builds against ESP-IDF v5.5.4. ESP-WROOM-32 builds use `cargo +esp` with target `xtensa-esp32-espidf`. Flash uses the dual OTA partition table (`partitions.csv`) with `--erase-parts otadata` to reset OTA tracking on fresh flash.
 
 ## Architecture
 
-The binary entry point is `src/bin/esp32multical21.rs`. It initializes hardware (SPI for CC1101 RF module, GPIO for reset button and onboard LED), loads config and AP-mode boot flags from NVS, sets up WiFi, then runs seven concurrent tasks via `tokio::select!`:
+The binary entry point is `src/bin/esp32multical21.rs`. It initializes hardware (SPI for CC1101 RF module, GPIO for reset button and onboard LED), loads config and AP-mode boot flags from NVS, sets up WiFi, then runs eight concurrent tasks via `tokio::select!`:
 
 | Task | Module | Purpose |
 |------|--------|---------|
 | `poll_reset()` | bin | uptime tracking, short-press AP-mode request, long-press factory reset |
 | `read_meter()` | `measure.rs` | CC1101 radio reception, wMBus decoding, meter data parsing |
 | `run_mqtt()` | `mqtt_sender.rs` | MQTT client, publishes to `{topic}/uptime` and `{topic}/meter` |
-| `run_api_server()` | `apiserver.rs` | Axum HTTP server (port 80 default) |
+| `run_api_server()` | `apiserver.rs` | Axum HTTP server (fixed port 80) |
 | `run_esphome_api()` | `esphome_api.rs` | ESPHome native API server (port 6053) |
+| `run_mdns()` | bin | mDNS advertisement as `esp32multical21.local` |
 | `wifi_loop.run()` | `wifi.rs` | WiFi station/AP-mode manager |
 | `pinger()` | bin | gateway ping watchdog (station mode) |
 
