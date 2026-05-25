@@ -1,11 +1,14 @@
-FROM espressif/idf-rust:esp32c3_latest
+ARG ESP_BOARD=esp32c3
+FROM espressif/idf-rust:${ESP_BOARD}_latest
 
-# esp-idf-sys downloads ESP-IDF + toolchain here; keep it in a volume for caching
-ENV IDF_TOOLS_PATH=/cache/espressif
+ARG ESP_BOARD
+
+# Keep downloaded Cargo crates in a volume across builds.
 ENV CARGO_HOME=/cache/cargo
 
-# Install rust-src (required by .cargo/config.toml build-std)
-RUN rustup component add rust-src clippy
+# The C3 target uses upstream nightly; the Xtensa image already supplies its
+# custom `esp` toolchain and does not support installing standard components.
+RUN if [ "$ESP_BOARD" = "esp32c3" ]; then rustup component add rust-src clippy; fi
 
 WORKDIR /project
 

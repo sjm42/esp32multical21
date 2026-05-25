@@ -2,7 +2,7 @@
 
 [package]
 name = "esp32multical21"
-version = "1.6.0"
+version = "1.6.1"
 authors = ["Sami J. Mäkinen <sjm@iki.fi>"]
 edition = "2024"
 
@@ -15,13 +15,13 @@ esp-wroom-32 = []
 
 [dependencies]
 anyhow = "1.0"
-askama = "0.15"
+askama = "0.16"
 axum = { version = "0.8", features = ["http1", "json"] }
 axum-macros = "0.5"
-aes = "0.8"
+aes = "0.9"
 chrono = "0.4"
 cc1101 = { version = "0.1", features = ["std"] }
-ctr = "0.9"
+ctr = "0.10"
 crc = "3.4"
 embedded-svc = { version = "0.29", features = ["experimental"] }
 esp-idf-sys = { version = "0.37", features = ["binstart"] }

@@ -28,8 +28,15 @@ Run from repository root:
 - `./flash_wroom32`: build, flash, and monitor an ESP-WROOM-32 using `cargo +esp`.
 - `./make_ota_image_c3`: produce `firmware-c3.bin` for OTA/manual distribution.
 - `./make_ota_image_wroom32`: produce `firmware-wroom32.bin` for OTA/manual distribution.
-- `./docker-build.sh`: Dockerized ESP32-C3 release build; use `--flash` to flash and monitor.
+- `./docker-build.sh --c3`: Dockerized ESP32-C3 release build; add `--flash` to flash and monitor on Linux.
+- `./docker-build.sh --wroom32`: Dockerized ESP-WROOM-32 release build; add `--flash` to flash and monitor on Linux.
 - `cargo clippy --all-targets --all-features`: lint before submitting changes.
+
+## Toolchain & ESP-IDF Compatibility
+- The configured ESP-IDF version is `v5.5.4` in `.cargo/config.toml`.
+- Published `esp-idf-sys`, `esp-idf-hal`, and `esp-idf-svc` releases used by this repository support ESP-IDF 5.5.
+- Do not switch to ESP-IDF 6.x without updating and validating the Rust ESP-IDF crate/toolchain stack; 6.x support is currently only in unreleased upstream crate changes.
+- Native ESP-WROOM-32 commands require `espup` and the exported `cargo +esp` toolchain. The Docker WROOM build avoids a local Rust/Xtensa installation.
 
 ## Coding Style & Naming Conventions
 - Rust edition is `2024`; toolchain is nightly (`rust-toolchain.toml`).
@@ -41,6 +48,7 @@ Run from repository root:
 There is currently no dedicated `tests/` suite. For each change:
 
 - Run `cargo check` and `cargo clippy --all-targets --all-features`.
+- When dependency or toolchain changes may affect Xtensa, also run `./docker-build.sh --wroom32`.
 - Validate on hardware when behavior touches radio, Wi-Fi, AP mode, button handling, LED behavior, OTA, MQTT, or ESPHome API.
 - If adding pure parsing/business logic, add inline unit tests (`#[cfg(test)]`) near the module.
 

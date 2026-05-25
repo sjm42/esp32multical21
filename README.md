@@ -59,56 +59,87 @@ the RX FIFO reaches threshold, after which firmware reads the packet and validat
 
 ## Building & Flashing
 
-### Prerequisites
+### Docker Build and Flash (no local Rust required)
 
-- Rust nightly with `rust-src` (default path in `rust-toolchain.toml`)
-- ESP tools: `espflash`, `ldproxy`, `espup`
-- Xtensa builds (`ESP-WROOM-32`) also require the `esp` Rust toolchain (`cargo +esp`)
-
-Debian/Ubuntu packages and Rust bootstrap example:
+This is the shortest setup path. Install [Docker Engine](https://docs.docker.com/engine/install/) on a Linux host,
+then run the helper from the repository root. It creates the appropriate official `espressif/idf-rust` builder
+image for the selected board; do not change Cargo features manually.
 
 ```bash
-sudo apt -y install build-essential curl git libssl-dev libudev-dev pkg-config python3-venv clang-18
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-chmod 755 rustup.sh
-./rustup.sh
+# ESP32-C3 (the default board)
+./docker-build.sh --c3                 # build only
+./docker-build.sh --c3 --flash         # build, flash, and monitor
 
+# ESP-WROOM-32 / original Xtensa ESP32
+./docker-build.sh --wroom32            # build only
+./docker-build.sh --wroom32 --flash    # build, flash, and monitor
+```
+
+Flashing from the container is supported on Linux. The helper passes a host serial device through to Docker and
+defaults to `/dev/ttyACM0`. Specify another device when needed:
+
+```bash
+ESP_PORT=/dev/ttyUSB0 ./docker-build.sh --wroom32 --flash
+ESP_PORT=/dev/ttyUSB0 ./docker-build.sh --wroom32 --monitor
+```
+
+The serial device must exist on the host, and the current user must be able to run Docker. This direct `--device`
+serial passthrough path is not supported by this helper on Docker Desktop for macOS or Windows; building still works,
+but flashing requires a Linux Docker host or separately configured USB/serial forwarding.
+
+The build caches Cargo downloads in the named Docker volume `esp32-cargo-cache`; ESP-IDF-managed tools remain in the
+ignored workspace directory `.embuild/`. If present, `docker-build.sh` sources `env.sh` and passes
+`WIFI_SSID` and `WIFI_PASS` into the build container. The Docker image otherwise defaults to `WIFI_SSID=internet`
+and an empty `WIFI_PASS`.
+
+### Native Toolchain Setup (Debian/Ubuntu)
+
+Use this path to run `flash_c3`, `flash_wroom32`, or the OTA-image scripts directly on the host. Installation
+details for other operating systems are available in the official
+[Rust on ESP Book](https://docs.espressif.com/projects/rust/book/getting-started/toolchain.html).
+
+Install host packages and Rust using `rustup`:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential curl git cmake ninja-build clang libclang-dev \
+    libssl-dev libudev-dev pkg-config python3 python3-venv
+
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 . "$HOME/.cargo/env"
-rustup toolchain add nightly
-espup install
 
-cargo install espmonitor espup ldproxy flip-link cargo-espflash espflash
-
-# optional & useful
-cargo install cargo-binutils cargo-embed cargo-flash cargo-generate cargo-update probe-run
+rustup toolchain install nightly --component rust-src --component clippy --component rustfmt
+cargo install --locked espflash cargo-espflash ldproxy
 ```
 
-### Docker Build (no local toolchain required)
-
-`Dockerfile` and `docker-build.sh` allow building and optionally flashing without
-installing the ESP-IDF toolchain locally.
+For the RISC-V ESP32-C3, the nightly toolchain is sufficient:
 
 ```bash
-# Build the Docker image once
-docker build -t esp32multical21-builder .
-
-# Build firmware only
-./docker-build.sh
-
-# Build, flash, and monitor on /dev/ttyACM0
-./docker-build.sh --flash
-
-# Monitor only on /dev/ttyACM0
-./docker-build.sh --monitor
+./flash_c3
+./make_ota_image_c3
 ```
 
-The build caches ESP-IDF and Cargo artifacts in named Docker volumes
-(`esp32-espressif-cache`, `esp32-cargo-cache`) so subsequent builds are fast.
-If present, `docker-build.sh` sources `env.sh` and passes `WIFI_SSID` and `WIFI_PASS` into the build container.
-The Docker image itself defaults to `WIFI_SSID=internet` and an empty `WIFI_PASS`.
+For ESP-WROOM-32, install the Xtensa-enabled Espressif Rust toolchain. `flash_wroom32` calls `cargo +esp`, so it
+cannot run before this step on a native host:
 
-The Docker helper currently targets the default ESP32-C3 build. Use the native `flash_wroom32` and
-`make_ota_image_wroom32` helpers for ESP-WROOM-32 builds.
+```bash
+cargo install --locked espup
+espup install --targets esp32
+. "$HOME/export-esp.sh"       # repeat in each new shell, or add it to shell startup
+
+./flash_wroom32
+./make_ota_image_wroom32
+```
+
+### ESP-IDF Version Compatibility
+
+The project is currently built against ESP-IDF `v5.5.4`, configured in `.cargo/config.toml`. This is the newest
+ESP-IDF 5.x release line supported by the published Rust ESP-IDF crates used here (`esp-idf-sys`, `esp-idf-hal`,
+and `esp-idf-svc`).
+
+ESP-IDF 6.x has been released upstream, but Rust crate support for it is still present only in unreleased upstream
+changes as of May 2026. Do not change `ESP_IDF_VERSION` to a 6.x release without also validating an updated Rust
+ESP-IDF crate stack on both ESP32-C3 and ESP-WROOM-32.
 
 ### Utility Scripts
 
