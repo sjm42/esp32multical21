@@ -118,8 +118,8 @@ enum EntityStateValue {
 }
 
 pub async fn run_esphome_api(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
-    if state.ap_mode || !state.config.read().await.esphome_enable {
-        info!("ESPHome API is disabled.");
+    if !state.config.read().await.esphome_enable {
+        info!("ESPHome API is disabled by configuration.");
         // we cannot return, otherwise tokio::select in main() will exit
         loop {
             sleep(Duration::from_secs(3600)).await;

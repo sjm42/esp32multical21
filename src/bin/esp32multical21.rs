@@ -124,17 +124,26 @@ fn main() -> anyhow::Result<()> {
                 wifi: None,
             };
 
-            info!("Entering main loop...");
-            tokio::select! {
-                _ = Box::pin(poll_reset(shared_state.clone(), button)) => { error!("poll_reset() ended."); }
-                _ = Box::pin(read_meter(shared_state.clone(), radio)) => { error!("poll_sensors() ended."); }
-                _ = Box::pin(run_mqtt(shared_state.clone())) => { error!("run_mqtt() ended."); }
-                _ = Box::pin(run_api_server(shared_state.clone())) => { error!("run_api_server() ended."); }
-                _ = Box::pin(run_esphome_api(shared_state.clone())) => { error!("run_esphome_api() ended."); }
-                _ = Box::pin(run_mdns(shared_state.clone())) => { error!("run_mdns() ended."); }
-                _ = Box::pin(wifi_loop.run(wifidriver, sysloop, timer)) => { error!("wifi_loop.run() ended."); }
-                _ = Box::pin(pinger(shared_state.clone())) => { error!("pinger() ended."); }
-            };
+            if shared_state.ap_mode {
+                info!("Entering AP recovery loop...");
+                tokio::select! {
+                    result = Box::pin(poll_reset(shared_state.clone(), button)) => { error!("poll_reset() ended: {result:?}"); }
+                    result = Box::pin(run_api_server(shared_state.clone())) => { error!("run_api_server() ended: {result:?}"); }
+                    result = Box::pin(wifi_loop.run(wifidriver, sysloop, timer)) => { error!("wifi_loop.run() ended: {result:?}"); }
+                };
+            } else {
+                info!("Entering main loop...");
+                tokio::select! {
+                    result = Box::pin(poll_reset(shared_state.clone(), button)) => { error!("poll_reset() ended: {result:?}"); }
+                    result = Box::pin(read_meter(shared_state.clone(), radio)) => { error!("poll_sensors() ended: {result:?}"); }
+                    result = Box::pin(run_mqtt(shared_state.clone())) => { error!("run_mqtt() ended: {result:?}"); }
+                    result = Box::pin(run_api_server(shared_state.clone())) => { error!("run_api_server() ended: {result:?}"); }
+                    result = Box::pin(run_esphome_api(shared_state.clone())) => { error!("run_esphome_api() ended: {result:?}"); }
+                    result = Box::pin(run_mdns(shared_state.clone())) => { error!("run_mdns() ended: {result:?}"); }
+                    result = Box::pin(wifi_loop.run(wifidriver, sysloop, timer)) => { error!("wifi_loop.run() ended: {result:?}"); }
+                    result = Box::pin(pinger(shared_state.clone())) => { error!("pinger() ended: {result:?}"); }
+                };
+            }
         }));
 
     info!("main() finished, reboot.");
@@ -206,9 +215,10 @@ async fn reset_button<'a>(
         countdown_elapsed_ms = (countdown_elapsed_ms + BUTTON_POLL_MS) % BUTTON_COUNTDOWN_STEP_MS;
     }
 
-    state.led_off().await?;
-
-    if !state.ap_mode {
+    if state.ap_mode {
+        state.led_on().await?;
+    } else {
+        state.led_off().await?;
         info!("Short button press, rebooting into AP mode for manual configuration.");
         state.request_ap_mode_on_next_boot().await?;
         sleep(Duration::from_millis(250)).await;

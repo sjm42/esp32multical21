@@ -414,7 +414,7 @@ The meter ID is encoded in little-endian BCD on the wire
 ## Architecture
 
 The binary entry point (`src/bin/esp32multical21.rs`) initializes hardware, loads config and AP-mode boot flags from
-NVS, and runs eight concurrent tasks under `tokio::select!` (service tasks wait until networking is up):
+NVS, and runs the normal-mode tasks below under `tokio::select!` (service tasks wait until networking is up):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -444,6 +444,10 @@ NVS, and runs eight concurrent tasks under `tokio::select!` (service tasks wait 
 All tasks share a single `Arc<Pin<Box<MyState>>>` instance with mostly `RwLock`-protected fields;
 `api_cnt` is an atomic counter.
 
+In AP recovery mode, only `poll_reset()` (uptime and factory reset handling), `run_api_server()`, and
+`wifi_loop.run()` are started. Radio reception, MQTT, ESPHome, mDNS, and the station gateway ping watchdog are not
+run while the recovery access point is active.
+
 ### Source Modules
 
 | File                         | Purpose                                                    |
@@ -472,8 +476,8 @@ All tasks share a single `Arc<Pin<Box<MyState>>>` instance with mostly `RwLock`-
 4. Initialize OTA subsystem, mark running slot valid (prevents rollback)
 5. Configure SPI bus and CC1101 radio, set up GPIO for reset button and onboard LED
 6. Create WiFi driver and shared `MyState`
-7. Launch Tokio runtime with eight concurrent tasks
-8. Enter station mode or AP mode depending on the boot flag, then start the corresponding services
+7. Launch the Tokio runtime
+8. Enter station mode or AP mode depending on the boot flag, then start only the corresponding services
 
 ## License
 

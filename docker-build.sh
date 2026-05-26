@@ -65,7 +65,9 @@ case "$BOARD" in
         ;;
 esac
 
-export MCU
+# docker run -e NAME forwards variables from this process only when they are
+# exported. env.sh is commonly a plain shell assignment file.
+export MCU WIFI_SSID WIFI_PASS
 IMAGE="esp32multical21-builder-$ESP_BOARD"
 
 # Build image if not present

@@ -6,13 +6,6 @@ use crate::*;
 const RADIO_WAIT_SECS: u64 = 600;
 
 pub async fn read_meter(state: Arc<Pin<Box<MyState>>>, mut radio: Cc1101Radio<'_>) -> AppResult<()> {
-    if state.ap_mode {
-        info!("Meter reading is disabled.");
-        loop {
-            sleep(Duration::from_secs(3600)).await;
-        }
-    }
-
     loop {
         if *state.net_up.read().await {
             break;
