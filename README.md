@@ -141,6 +141,22 @@ ESP-IDF 6.x has been released upstream, but Rust crate support for it is still p
 changes as of May 2026. Do not change `ESP_IDF_VERSION` to a 6.x release without also validating an updated Rust
 ESP-IDF crate stack on both ESP32-C3 and ESP-WROOM-32.
 
+### Dependency Maintenance
+
+Dependency checks should keep both the direct manifest requirements and the locked transitive graph in view:
+
+```bash
+cargo outdated --workspace --root-deps-only
+cargo outdated --workspace
+cargo update --dry-run --verbose
+```
+
+As of 2026-06-12, all direct dependencies in `Cargo.toml` are current within the declared compatibility ranges,
+and `cargo update --dry-run --verbose` reports no lockfile updates. The only reported newer crate is transitive:
+`matchit` is locked at `0.8.4` via `axum 0.8.9`, while `0.8.6` exists. There is no direct manifest change for that
+without an upstream `axum` dependency update or an explicit patch/override, which should be avoided unless needed
+for a concrete bug fix.
+
 ### Utility Scripts
 
 Optional helper environment file:

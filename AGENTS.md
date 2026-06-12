@@ -24,6 +24,9 @@ Run from repository root:
 - `cargo build`: debug build for configured target.
 - `cargo build -r`: release build (size-optimized, LTO enabled).
 - `cargo run -r -- --baud 921600`: build, flash, and open monitor via `espflash`.
+- `cargo outdated --workspace --root-deps-only`: check whether direct manifest dependencies can be updated.
+- `cargo outdated --workspace`: check the full dependency graph, including transitive crates.
+- `cargo update --dry-run --verbose`: check lockfile updates without changing `Cargo.lock`.
 - `./flash_c3`: shortcut for the default ESP32-C3 release flash flow.
 - `./flash_wroom32`: build, flash, and monitor an ESP-WROOM-32 using `cargo +esp`.
 - `./make_ota_image_c3`: produce `firmware-c3.bin` for OTA/manual distribution.
@@ -37,6 +40,12 @@ Run from repository root:
 - Published `esp-idf-sys`, `esp-idf-hal`, and `esp-idf-svc` releases used by this repository support ESP-IDF 5.5.
 - Do not switch to ESP-IDF 6.x without updating and validating the Rust ESP-IDF crate/toolchain stack; 6.x support is currently only in unreleased upstream crate changes.
 - Native ESP-WROOM-32 commands require `espup` and the exported `cargo +esp` toolchain. The Docker WROOM build avoids a local Rust/Xtensa installation.
+
+## Dependency Update Notes
+- Prefer ordinary semver-compatible updates through `cargo update`; avoid `[patch]` or dependency overrides unless fixing a concrete issue.
+- Check direct dependencies separately from the full graph. Transitive crates can appear behind latest even when no direct manifest update is available.
+- As of 2026-06-12, direct dependencies are current. The only reported newer transitive crate is `matchit` (`0.8.4` locked via `axum 0.8.9`, latest `0.8.6`), so no `Cargo.toml` or `Cargo.lock` update is warranted for that alone.
+- Any change to the Rust ESP-IDF crate stack or ESP-IDF version should be validated on both `esp32-c3` and `esp-wroom-32`; run the Docker WROOM build when local Xtensa tooling is unavailable.
 
 ## Coding Style & Naming Conventions
 - Rust edition is `2024`; toolchain is nightly (`rust-toolchain.toml`).
