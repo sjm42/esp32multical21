@@ -1,14 +1,13 @@
 ARG ESP_BOARD=esp32c3
-FROM espressif/idf-rust:${ESP_BOARD}_latest
+FROM espressif/idf-rust:all_latest
 
 ARG ESP_BOARD
 
 # Keep downloaded Cargo crates in a volume across builds.
 ENV CARGO_HOME=/cache/cargo
 
-# The C3 target uses upstream nightly; the Xtensa image already supplies its
-# custom `esp` toolchain and does not support installing standard components.
-RUN if [ "$ESP_BOARD" = "esp32c3" ]; then rustup component add rust-src clippy; fi
+# The all-target image supplies the repository-selected `esp` toolchain for
+# both the RISC-V C3 and Xtensa WROOM32 builds.
 
 WORKDIR /project
 

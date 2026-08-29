@@ -28,7 +28,7 @@ Run from repository root:
 - `cargo outdated --workspace`: check the full dependency graph, including transitive crates.
 - `cargo update --dry-run --verbose`: check lockfile updates without changing `Cargo.lock`.
 - `./flash_c3`: shortcut for the default ESP32-C3 release flash flow.
-- `./flash_wroom32`: build, flash, and monitor an ESP-WROOM-32 using `cargo +esp`.
+- `./flash_wroom32`: build, flash, and monitor an ESP-WROOM-32 using the configured `esp` toolchain.
 - `./make_ota_image_c3`: produce `firmware-c3.bin` for OTA/manual distribution.
 - `./make_ota_image_wroom32`: produce `firmware-wroom32.bin` for OTA/manual distribution.
 - `./docker-build.sh --c3`: Dockerized ESP32-C3 release build; add `--flash` to flash and monitor on Linux.
@@ -39,7 +39,7 @@ Run from repository root:
 - The configured ESP-IDF version is `v5.5.4` in `.cargo/config.toml`.
 - Published `esp-idf-sys`, `esp-idf-hal`, and `esp-idf-svc` releases used by this repository support ESP-IDF 5.5.
 - Do not switch to ESP-IDF 6.x without updating and validating the Rust ESP-IDF crate/toolchain stack; 6.x support is currently only in unreleased upstream crate changes.
-- Native ESP-WROOM-32 commands require `espup` and the exported `cargo +esp` toolchain. The Docker WROOM build avoids a local Rust/Xtensa installation.
+- Native commands require `espup` and the exported `esp` toolchain. Docker builds use Espressif's all-target toolchain image.
 
 ## Dependency Update Notes
 - Prefer ordinary semver-compatible updates through `cargo update`; avoid `[patch]` or dependency overrides unless fixing a concrete issue.
@@ -48,7 +48,7 @@ Run from repository root:
 - Any change to the Rust ESP-IDF crate stack or ESP-IDF version should be validated on both `esp32-c3` and `esp-wroom-32`; run the Docker WROOM build when local Xtensa tooling is unavailable.
 
 ## Coding Style & Naming Conventions
-- Rust edition is `2024`; toolchain is nightly (`rust-toolchain.toml`).
+- Rust edition is `2024`; the Espressif `esp` toolchain is selected by `rust-toolchain.toml`.
 - Format with `cargo fmt` (configured in `rustfmt.toml`: max width 120, grouped imports).
 - Keep modules/files `snake_case`; types/traits `CamelCase`; constants `SCREAMING_SNAKE_CASE`.
 - Prefer small async functions and avoid large futures (Clippy threshold configured to 128 bytes).

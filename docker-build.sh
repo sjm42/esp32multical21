@@ -61,7 +61,7 @@ case "$BOARD" in
         ESP_BOARD=esp32
         MCU=esp32
         BIN=target/xtensa-esp32-espidf/release/esp32multical21
-        BUILD_COMMAND=(cargo +esp build -r --target xtensa-esp32-espidf --no-default-features --features=esp-wroom-32)
+        BUILD_COMMAND=(cargo build -r --target xtensa-esp32-espidf --no-default-features --features=esp-wroom-32)
         ;;
 esac
 
@@ -99,7 +99,7 @@ docker run --rm --user root \
     "$IMAGE" \
     chown esp:esp /cache/cargo
 
-# The custom Xtensa compiler in the ESP32 image does not ship Clippy.
+# Lint the default C3 configuration once; the WROOM path is validated by its build.
 if [[ "$BOARD" == c3 ]]; then
     docker run --rm \
         -e MCU -e WIFI_SSID -e WIFI_PASS \

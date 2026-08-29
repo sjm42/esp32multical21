@@ -108,25 +108,13 @@ sudo apt-get install -y build-essential curl git cmake ninja-build clang libclan
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 . "$HOME/.cargo/env"
 
-rustup toolchain install nightly --component rust-src --component clippy --component rustfmt
+cargo install --locked espup
+espup install --targets esp32,esp32c3
+. "$HOME/export-esp.sh"       # repeat in each new shell, or add it to shell startup
 cargo install --locked espflash cargo-espflash ldproxy
-```
 
-For the RISC-V ESP32-C3, the nightly toolchain is sufficient:
-
-```bash
 ./flash_c3
 ./make_ota_image_c3
-```
-
-For ESP-WROOM-32, install the Xtensa-enabled Espressif Rust toolchain. `flash_wroom32` calls `cargo +esp`, so it
-cannot run before this step on a native host:
-
-```bash
-cargo install --locked espup
-espup install --targets esp32
-. "$HOME/export-esp.sh"       # repeat in each new shell, or add it to shell startup
-
 ./flash_wroom32
 ./make_ota_image_wroom32
 ```
@@ -344,7 +332,7 @@ The same hostname is also sent in DHCP requests so most routers assign a named l
 
 ## Build Configuration
 
-- **Rust edition**: 2024 (nightly)
+- **Rust edition**: 2024 (Espressif `esp` toolchain)
 - **Hardware features**:
     - `esp32-c3` (default)
     - `esp-wroom-32`
