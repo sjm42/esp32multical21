@@ -235,18 +235,11 @@ async fn update_fw(
     info!("#{cnt} update_fw()");
 
     info!("Firmware update: \n{fw_update:#?}");
-    if !fw_update.url.starts_with("http://") && !fw_update.url.starts_with("https://") {
-        return (
-            StatusCode::BAD_REQUEST,
-            "Firmware URL must start with http:// or https://",
-        )
-            .into_response();
+    if !fw_update.url.starts_with("http://") {
+        return (StatusCode::BAD_REQUEST, "Firmware URL must start with http://").into_response();
     }
 
-    let client_config = HttpConfiguration {
-        crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
-        ..Default::default()
-    };
+    let client_config = HttpConfiguration::default();
 
     let mut ota = EspOta::new().unwrap();
     let mut client = HttpClient::wrap(EspHttpConnection::new(&client_config).unwrap());
