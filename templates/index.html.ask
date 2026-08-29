@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="./index.css">
 </head>
 
-<body onload="onLoad()">
+<body>
 <main class="app">
 <section class="panel">
 <h1>ESP32 Multical21</h1>
@@ -58,9 +58,9 @@
 </form>
 </section>
 <section class="panel danger">
-<hr>
-<h2>Update firmware (DANGER)</h2>
+<h2>OTA firmware update (DANGER)</h2>
 <form action="/fw" method="POST" name="esp32fw">
+    <label for="firmware">Firmware URL:</label>
     <input type="text" id="firmware" name="url">
     <input type="submit" value="Update!">
 </form>

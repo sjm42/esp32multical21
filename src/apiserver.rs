@@ -12,6 +12,7 @@ use axum::{
 };
 pub use axum_macros::debug_handler;
 use embedded_svc::http::client::Client as HttpClient;
+use esp_idf_svc::http::client::Configuration as HttpConfiguration;
 
 use crate::*;
 
@@ -234,11 +235,22 @@ async fn update_fw(
     info!("#{cnt} update_fw()");
 
     info!("Firmware update: \n{fw_update:#?}");
-    let url = fw_update.url.to_owned();
+    if !fw_update.url.starts_with("http://") && !fw_update.url.starts_with("https://") {
+        return (
+            StatusCode::BAD_REQUEST,
+            "Firmware URL must start with http:// or https://",
+        )
+            .into_response();
+    }
+
+    let client_config = HttpConfiguration {
+        crt_bundle_attach: Some(esp_idf_svc::sys::esp_crt_bundle_attach),
+        ..Default::default()
+    };
 
     let mut ota = EspOta::new().unwrap();
-    let mut client = HttpClient::wrap(EspHttpConnection::new(&Default::default()).unwrap());
-    let req = client.get(&url).unwrap();
+    let mut client = HttpClient::wrap(EspHttpConnection::new(&client_config).unwrap());
+    let req = client.get(fw_update.url.as_str()).unwrap();
     let resp = req.submit().unwrap();
     if resp.status() != 200 {
         let emsg = format!("Firmware download failed: HTTP {}", resp.status());

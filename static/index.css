@@ -145,14 +145,51 @@ input[type="submit"]:hover {
   transform: translateY(-1px);
 }
 
-hr {
-  margin: 2px 0;
-  border: 0;
-  border-top: 1px solid rgba(25, 56, 60, 0.14);
+input[type="submit"]:disabled {
+  cursor: wait;
+  opacity: 0.82;
+  filter: none;
+  transform: none;
+}
+
+input[id="firmware"] {
+  margin-right: 8px;
+}
+
+.form-status {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(25, 56, 60, 0.12);
+  background: rgba(25, 56, 60, 0.04);
+  color: var(--muted);
+  font-size: 0.93rem;
+}
+
+.form-status.is-busy {
+  border-color: rgba(21, 121, 106, 0.22);
+  background: rgba(20, 120, 105, 0.07);
+  color: #124f46;
+}
+
+.form-status.is-ok {
+  border-color: rgba(21, 121, 106, 0.25);
+  background: rgba(20, 120, 105, 0.09);
+  color: #0f5a4f;
+}
+
+.form-status.is-error {
+  border-color: rgba(163, 51, 51, 0.26);
+  background: rgba(163, 51, 51, 0.08);
+  color: #7d2929;
 }
 
 .danger h2 {
   color: var(--danger);
+}
+
+.danger input[type="submit"] {
+  background: linear-gradient(140deg, #bf4a4a 0%, #912e2e 100%);
 }
 
 @media (max-width: 700px) {
@@ -179,5 +216,10 @@ hr {
 
   form[name="esp32cfg"] th {
     padding: 3px 4px;
+  }
+
+  form[name="esp32fw"] input[type="text"] {
+    margin-right: 0;
+    margin-bottom: 8px;
   }
 }
