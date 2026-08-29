@@ -100,7 +100,8 @@ label {
 }
 
 input[type="text"],
-input[type="password"] {
+input[type="password"],
+input[type="url"] {
   width: 100%;
   max-width: 100%;
   border: 1px solid rgba(21, 121, 106, 0.35);
@@ -120,7 +121,8 @@ input[type="checkbox"] {
 }
 
 input[type="text"]:focus,
-input[type="password"]:focus {
+input[type="password"]:focus,
+input[type="url"]:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(21, 121, 106, 0.16);
@@ -152,8 +154,10 @@ input[type="submit"]:disabled {
   transform: none;
 }
 
-input[id="firmware"] {
-  margin-right: 8px;
+form[name="esp32fw"] label,
+form[name="esp32fw"] input[type="url"] {
+  display: block;
+  width: 100%;
 }
 
 .form-status {
@@ -216,10 +220,5 @@ input[id="firmware"] {
 
   form[name="esp32cfg"] th {
     padding: 3px 4px;
-  }
-
-  form[name="esp32fw"] input[type="text"] {
-    margin-right: 0;
-    margin-bottom: 8px;
   }
 }
