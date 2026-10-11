@@ -2,7 +2,7 @@
 
 [package]
 name = "esp32multical21"
-version = "1.7.0"
+version = "1.8.0"
 authors = ["Sami J. Mäkinen <sjm@iki.fi>"]
 edition = "2024"
 
@@ -65,7 +65,8 @@ lto = "off"
 
 [package.metadata.esp-idf-sys]
 extra_components = [
-  { remote_component = { name = "espressif/mdns", version = "*" } }
+  { remote_component = { name = "espressif/mdns", version = "*" } },
+  { remote_component = { name = "espressif/mqtt", version = "*" } },
 ]
 
 # EOF
