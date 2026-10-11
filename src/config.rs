@@ -58,14 +58,30 @@ impl Default for MyConfig {
     }
 }
 
-fn parse_hex(hex: &str) -> Option<Vec<u8>> {
-    if !hex.len().is_multiple_of(2) {
+fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn parse_hex<const N: usize>(hex: &str) -> Option<[u8; N]> {
+    let bytes = hex.as_bytes();
+    if bytes.len() != N.checked_mul(2)? {
         return None;
     }
-    (0..hex.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
-        .collect()
+
+    let mut output = [0_u8; N];
+    for (destination, pair) in output.iter_mut().zip(bytes.chunks_exact(2)) {
+        let &[high, low] = pair else {
+            return None;
+        };
+        *destination = (hex_nibble(high)? << 4) | hex_nibble(low)?;
+    }
+
+    Some(output)
 }
 
 impl MyConfig {
@@ -73,22 +89,14 @@ impl MyConfig {
     /// The meter ID is entered as printed on the meter (big-endian),
     /// but the wire format is little-endian, so we reverse the bytes.
     pub fn meter_id_bytes(&self) -> Option<[u8; 4]> {
-        if self.meter_id.len() != 8 {
-            return None;
-        }
-        let bytes = parse_hex(&self.meter_id)?;
-        Some([bytes[3], bytes[2], bytes[1], bytes[0]])
+        let mut bytes = parse_hex::<4>(&self.meter_id)?;
+        bytes.reverse();
+        Some(bytes)
     }
 
     /// Parse meter_key hex string (32 hex chars) to 16 bytes.
     pub fn meter_key_bytes(&self) -> Option<[u8; 16]> {
-        if self.meter_key.len() != 32 {
-            return None;
-        }
-        let bytes = parse_hex(&self.meter_key)?;
-        let mut arr = [0u8; 16];
-        arr.copy_from_slice(&bytes);
-        Some(arr)
+        parse_hex::<16>(&self.meter_key)
     }
 
     pub fn from_nvs(nvs: &mut nvs::EspNvs<nvs::NvsDefault>) -> Option<Self> {
@@ -133,6 +141,27 @@ impl MyConfig {
             .map_err(|e| AppError::Message(format!("Cannot save to nvs: {e:?}")))?;
         info!("Config saved.");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_hex;
+
+    #[test]
+    fn parse_hex_accepts_upper_and_lower_case() {
+        assert_eq!(parse_hex::<4>("01aBfe90"), Some([0x01, 0xab, 0xfe, 0x90]));
+    }
+
+    #[test]
+    fn parse_hex_rejects_wrong_length_and_invalid_characters() {
+        assert_eq!(parse_hex::<4>("1234"), None);
+        assert_eq!(parse_hex::<4>("1234567g"), None);
+    }
+
+    #[test]
+    fn parse_hex_rejects_non_ascii_without_panicking() {
+        assert_eq!(parse_hex::<4>("€aaaaa"), None);
     }
 }
 

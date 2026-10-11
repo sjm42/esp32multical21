@@ -13,10 +13,19 @@ const BUTTON_COUNTDOWN_STEP_MS: u64 = 500;
 
 // esp_app_desc!();
 
-fn main() -> anyhow::Result<()> {
+fn main() {
     esp_idf_sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
 
+    if let Err(error) = run() {
+        error!("Fatal error: {error:#}");
+        error!("Rebooting...");
+        FreeRtos::delay_ms(3000);
+        esp_idf_hal::reset::restart();
+    }
+}
+
+fn run() -> anyhow::Result<()> {
     #[allow(clippy::needless_update)]
     let config = esp_idf_sys::esp_vfs_eventfd_config_t {
         max_fds: 1,
@@ -32,13 +41,8 @@ fn main() -> anyhow::Result<()> {
     let nvs_default_partition = nvs::EspDefaultNvsPartition::take()?;
 
     let ns = env!("CARGO_BIN_NAME");
-    let mut nvs = match nvs::EspNvs::new(nvs_default_partition.clone(), ns, true) {
-        Ok(nvs) => {
-            info!("Got namespace {ns:?} from default partition");
-            nvs
-        }
-        Err(e) => panic!("Could not get namespace {ns}: {e:?}"),
-    };
+    let mut nvs = nvs::EspNvs::new(nvs_default_partition.clone(), ns, true)?;
+    info!("Got namespace {ns:?} from default partition");
 
     let config = match MyConfig::from_nvs(&mut nvs) {
         None => {
@@ -121,7 +125,6 @@ fn main() -> anyhow::Result<()> {
             shared_state.led_off().await.ok();
             let wifi_loop = WifiLoop {
                 state: shared_state.clone(),
-                wifi: None,
             };
 
             if shared_state.ap_mode {
@@ -156,10 +159,10 @@ async fn poll_reset(mut state: Arc<Pin<Box<MyState>>>, button: PinDriver<'_, Inp
     let mut uptime_ms: u64 = 0;
     loop {
         sleep(Duration::from_millis(BUTTON_POLL_MS)).await;
-        uptime_ms += BUTTON_POLL_MS;
+        uptime_ms = uptime_ms.saturating_add(BUTTON_POLL_MS);
         if uptime_ms >= 1000 {
             let secs = (uptime_ms / 1000) as usize;
-            uptime += secs;
+            uptime = uptime.saturating_add(secs);
             uptime_ms %= 1000;
             *state.uptime.write().await = uptime;
         }
@@ -180,8 +183,8 @@ async fn reset_button<'a>(
 ) -> AppResult<()> {
     let mut reset_cnt = CONFIG_RESET_COUNT;
     let mut blink_on = true;
-    let mut blink_elapsed_ms = 0;
-    let mut countdown_elapsed_ms = 0;
+    let mut blink_elapsed_ms: u64 = 0;
+    let mut countdown_elapsed_ms: u64 = 0;
 
     while button.is_low() {
         if countdown_elapsed_ms == 0 {
@@ -202,7 +205,7 @@ async fn reset_button<'a>(
                 esp_idf_hal::reset::restart();
             }
 
-            reset_cnt -= 1;
+            reset_cnt = reset_cnt.saturating_sub(1);
         }
 
         if blink_elapsed_ms == 0 {
@@ -211,8 +214,8 @@ async fn reset_button<'a>(
         }
 
         sleep(Duration::from_millis(BUTTON_POLL_MS)).await;
-        blink_elapsed_ms = (blink_elapsed_ms + BUTTON_POLL_MS) % BUTTON_BLINK_MS;
-        countdown_elapsed_ms = (countdown_elapsed_ms + BUTTON_POLL_MS) % BUTTON_COUNTDOWN_STEP_MS;
+        blink_elapsed_ms = blink_elapsed_ms.saturating_add(BUTTON_POLL_MS) % BUTTON_BLINK_MS;
+        countdown_elapsed_ms = countdown_elapsed_ms.saturating_add(BUTTON_POLL_MS) % BUTTON_COUNTDOWN_STEP_MS;
     }
 
     if state.ap_mode {

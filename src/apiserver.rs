@@ -2,10 +2,14 @@
 
 use std::sync::atomic::Ordering;
 
+use anyhow::Context;
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Form, State, rejection::JsonRejection},
+    extract::{
+        DefaultBodyLimit, Form, State,
+        rejection::{FormRejection, JsonRejection},
+    },
     http::{Response, StatusCode, header},
     response::{Html, IntoResponse},
     routing::*,
@@ -15,6 +19,52 @@ use embedded_svc::http::client::Client as HttpClient;
 use esp_idf_svc::http::client::Configuration as HttpConfiguration;
 
 use crate::*;
+
+const HTTP_BODY_LIMIT: usize = 8 * 1024;
+const REBOOT_DELAY: Duration = Duration::from_secs(2);
+
+type ApiResult<T> = Result<T, ApiError>;
+
+#[derive(Debug, thiserror::Error)]
+enum ApiError {
+    #[error("{0}")]
+    BadRequest(String),
+    #[error("{0}")]
+    BadGateway(String),
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
+}
+
+impl ApiError {
+    fn bad_request(message: impl Into<String>) -> Self {
+        Self::BadRequest(message.into())
+    }
+
+    fn bad_gateway(message: impl Into<String>) -> Self {
+        Self::BadGateway(message.into())
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response<Body> {
+        error!("HTTP handler failed: {self:#}");
+
+        let (status, message) = match self {
+            Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message),
+            Self::BadGateway(message) => (StatusCode::BAD_GATEWAY, message),
+            Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string()),
+        };
+
+        (status, Json(serde_json::json!({"ok": false, "message": message}))).into_response()
+    }
+}
+
+fn schedule_reboot(state: Arc<Pin<Box<MyState>>>) {
+    tokio::spawn(async move {
+        sleep(REBOOT_DELAY).await;
+        *state.reset.write().await = true;
+    });
+}
 
 macro_rules! static_handler {
     ($fn_name:ident, $path:literal, $content_type:literal, $bytes:expr) => {
@@ -75,6 +125,7 @@ pub async fn run_api_server(state: Arc<Pin<Box<MyState>>>) -> AppResult<()> {
         .route("/meter", get(get_meter))
         .route("/reset_conf", get(reset_conf))
         .route("/fw", post(update_fw).options(options))
+        .layer(DefaultBodyLimit::max(HTTP_BODY_LIMIT))
         .with_state(state);
     // .layer(TraceLayer::new_for_http());
 
@@ -98,22 +149,17 @@ pub async fn options(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Bo
         .into_response()
 }
 
-pub async fn get_index(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
+async fn get_index(State(state): State<Arc<Pin<Box<MyState>>>>) -> ApiResult<Response<Body>> {
     let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} get_index()");
 
     let ota_slot = state.ota_slot.clone();
     let config = state.config.read().await.clone();
     let value_tuple: (&str, &dyn Any) = ("ota_slot", &ota_slot);
-    let index = match config.render_with_values(&value_tuple) {
-        Err(e) => {
-            let err_msg = format!("Index template error: {e:?}\n");
-            error!("{err_msg}");
-            return (StatusCode::INTERNAL_SERVER_ERROR, err_msg).into_response();
-        }
-        Ok(s) => s,
-    };
-    (StatusCode::OK, Html(index)).into_response()
+    let index = config
+        .render_with_values(&value_tuple)
+        .context("could not render index template")?;
+    Ok((StatusCode::OK, Html(index)).into_response())
 }
 
 pub async fn get_uptime(State(state): State<Arc<Pin<Box<MyState>>>>) -> (StatusCode, Json<Uptime>) {
@@ -148,34 +194,18 @@ pub async fn get_meter(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<
     }
 }
 
-pub async fn set_conf(
+async fn set_conf(
     State(state): State<Arc<Pin<Box<MyState>>>>,
     config_payload: Result<Json<MyConfig>, JsonRejection>,
-) -> Response<Body> {
+) -> ApiResult<Response<Body>> {
     let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} set_conf()");
 
-    let Json(mut config) = match config_payload {
-        Ok(config) => config,
-        Err(e) => {
-            let msg = format!("Invalid config JSON: {e}");
-            error!("{msg}");
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"ok": false, "message": msg})),
-            )
-                .into_response();
-        }
-    };
+    let Json(mut config) =
+        config_payload.map_err(|error| ApiError::bad_request(format!("Invalid config JSON: {error}")))?;
 
     if config.v4mask > 30 {
-        let msg = "IPv4 mask error: bits must be between 0..30";
-        error!("{}", msg);
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"ok": false, "message": msg})),
-        )
-            .into_response();
+        return Err(ApiError::bad_request("IPv4 mask error: bits must be between 0..30"));
     }
 
     if !config.wifi_wpa2ent {
@@ -196,7 +226,7 @@ pub async fn set_conf(
     Box::pin(save_conf(state, config)).await
 }
 
-pub async fn reset_conf(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response<Body> {
+async fn reset_conf(State(state): State<Arc<Pin<Box<MyState>>>>) -> ApiResult<Response<Body>> {
     let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} reset_conf()");
 
@@ -204,61 +234,75 @@ pub async fn reset_conf(State(state): State<Arc<Pin<Box<MyState>>>>) -> Response
     Box::pin(save_conf(state, MyConfig::default())).await
 }
 
-async fn save_conf(state: Arc<Pin<Box<MyState>>>, config: MyConfig) -> Response<Body> {
+async fn save_conf(state: Arc<Pin<Box<MyState>>>, config: MyConfig) -> ApiResult<Response<Body>> {
     let mut nvs = state.nvs.write().await;
-    match config.to_nvs(&mut nvs) {
-        Ok(_) => {
-            info!("Config saved to nvs. Resetting soon...");
-            *state.reset.write().await = true;
-            (
-                StatusCode::OK,
-                Json(serde_json::json!({"ok": true, "message": "Config saved, rebooting"})),
-            )
-                .into_response()
-        }
-        Err(e) => {
-            let msg = format!("Nvs write error: {e:?}");
-            error!("{}", msg);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"ok": false, "message": msg})),
-            )
-                .into_response()
-        }
-    }
+    config.to_nvs(&mut nvs).context("could not save configuration to NVS")?;
+    drop(nvs);
+
+    info!("Config saved to nvs. Resetting soon...");
+    schedule_reboot(state);
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({"ok": true, "message": "Config saved, rebooting"})),
+    )
+        .into_response())
 }
 async fn update_fw(
     State(state): State<Arc<Pin<Box<MyState>>>>,
-    Form(fw_update): Form<UpdateFirmware>,
-) -> Response<Body> {
+    fw_update: Result<Form<UpdateFirmware>, FormRejection>,
+) -> ApiResult<Response<Body>> {
     let cnt = state.api_cnt.fetch_add(1, Ordering::Relaxed);
     info!("#{cnt} update_fw()");
 
+    let Form(fw_update) =
+        fw_update.map_err(|error| ApiError::bad_request(format!("Invalid firmware request: {error}")))?;
     info!("Firmware update: \n{fw_update:#?}");
     if !fw_update.url.starts_with("http://") {
-        return (StatusCode::BAD_REQUEST, "Firmware URL must start with http://").into_response();
+        return Err(ApiError::bad_request("Firmware URL must start with http://"));
     }
 
     let client_config = HttpConfiguration::default();
 
-    let mut ota = EspOta::new().unwrap();
-    let mut client = HttpClient::wrap(EspHttpConnection::new(&client_config).unwrap());
-    let req = client.get(fw_update.url.as_str()).unwrap();
-    let resp = req.submit().unwrap();
+    let mut ota = EspOta::new().context("could not acquire OTA service")?;
+    let connection = EspHttpConnection::new(&client_config).context("could not create firmware HTTP connection")?;
+    let mut client = HttpClient::wrap(connection);
+    let req = client
+        .get(fw_update.url.as_str())
+        .map_err(|error| ApiError::bad_request(format!("Invalid firmware URL: {error}")))?;
+    let resp = req
+        .submit()
+        .map_err(|error| ApiError::bad_gateway(format!("Firmware download failed: {error}")))?;
     if resp.status() != 200 {
-        let emsg = format!("Firmware download failed: HTTP {}", resp.status());
-        error!("{emsg}");
-        return (StatusCode::BAD_GATEWAY, emsg).into_response();
+        return Err(ApiError::bad_gateway(format!(
+            "Firmware download failed: HTTP {}",
+            resp.status()
+        )));
     }
 
-    let update_src = Box::new(resp);
-    let mut update = ota.initiate_update().unwrap();
-    let mut buffer = [0_u8; 8192];
+    let mut update = ota.initiate_update().context("could not initiate OTA update")?;
+    let mut buffer = Vec::new();
+    buffer
+        .try_reserve_exact(8192)
+        .context("could not allocate OTA transfer buffer")?;
+    buffer.resize(8192, 0_u8);
 
-    io::utils::copy(update_src, &mut update, &mut buffer).unwrap();
-    update.complete().unwrap();
+    io::utils::copy(resp, &mut update, &mut buffer).map_err(|error| match error {
+        io::utils::CopyError::Read(error) => {
+            ApiError::bad_gateway(format!("Firmware download failed while reading: {error}"))
+        }
+        io::utils::CopyError::Write(error) => {
+            ApiError::Internal(anyhow::anyhow!("firmware flash write failed: {error}"))
+        }
+    })?;
+    update.complete().context("firmware validation or activation failed")?;
 
-    info!("Update done. Restarting...");
-    esp_idf_svc::hal::reset::restart();
+    info!("Update done. Restarting soon...");
+    schedule_reboot(state);
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({"ok": true, "message": "Firmware updated, rebooting"})),
+    )
+        .into_response())
 }
 // EOF

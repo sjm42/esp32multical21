@@ -27,11 +27,8 @@ pub fn crc16_en13757(data: &[u8]) -> u16 {
 /// Check if payload meter ID matches expected meter ID.
 /// Meter serial is at payload[4..8] in little-endian BCD, reversed vs printed serial.
 pub fn check_meter_id(payload: &[u8], meter_id: &[u8; 4]) -> bool {
-    if payload.len() < 8 {
-        return false;
-    }
     // Compare bytes directly — meter_id should already be in wire order
-    payload[4] == meter_id[0] && payload[5] == meter_id[1] && payload[6] == meter_id[2] && payload[7] == meter_id[3]
+    payload.get(4..8) == Some(meter_id.as_slice())
 }
 
 /// Construct AES-128-CTR IV for ELL-II (CI=0x8D) from wMBus frame header.
@@ -41,19 +38,19 @@ pub fn check_meter_id(payload: &[u8], meter_id: &[u8; 4]) -> bool {
 ///   [8]      = CC (Communication Control, raw[11])
 ///   [9..13]  = SN (Session Number, raw[13..17])
 ///   [13..16] = 0x00 (padding)
-fn build_iv(raw: &[u8]) -> [u8; 16] {
+fn build_iv(raw: &[u8]) -> Option<[u8; 16]> {
     let mut iv = [0u8; 16];
-    iv[0..2].copy_from_slice(&raw[2..4]); // M-field
-    iv[2..8].copy_from_slice(&raw[4..10]); // A-field (serial + version + type)
-    iv[8] = raw[11]; // CC
-    iv[9..13].copy_from_slice(&raw[13..17]); // SN
-    iv
+    iv.get_mut(0..2)?.copy_from_slice(raw.get(2..4)?); // M-field
+    iv.get_mut(2..8)?.copy_from_slice(raw.get(4..10)?); // A-field (serial + version + type)
+    *iv.get_mut(8)? = *raw.get(11)?; // CC
+    iv.get_mut(9..13)?.copy_from_slice(raw.get(13..17)?); // SN
+    Some(iv)
 }
 
 /// Decrypt ELL-II wMBus payload using AES-128-CTR.
 /// For CI=0x8D: encrypted data starts at raw[17], length = L - 2 - 16 bytes.
 fn decrypt_payload(raw: &[u8], key: &[u8; 16]) -> Option<Vec<u8>> {
-    let l_field = raw[0] as usize;
+    let l_field = usize::from(*raw.first()?);
     // Encrypted data: raw[17..L-1] (skip 17-byte header, exclude 2 trailing bytes)
     // Matches reference: cipherLength = length - 2 - 16
     let encrypted_start = 17;
@@ -69,8 +66,8 @@ fn decrypt_payload(raw: &[u8], key: &[u8; 16]) -> Option<Vec<u8>> {
         return None;
     }
 
-    let iv = build_iv(raw);
-    let mut decrypted = raw[encrypted_start..encrypted_end].to_vec();
+    let iv = build_iv(raw)?;
+    let mut decrypted = raw.get(encrypted_start..encrypted_end)?.to_vec();
 
     let mut cipher = Ctr128BE::<Aes128>::new(key.into(), &iv.into());
     cipher.apply_keystream(&mut decrypted);
@@ -85,23 +82,24 @@ pub fn parse_frame(raw: &[u8], meter_id: &[u8; 4], key: &[u8; 16]) -> Option<Met
         return None;
     }
 
-    let c_field = raw[1];
+    let c_field = *raw.get(1)?;
     if c_field != 0x44 {
         return None;
     }
 
     if !check_meter_id(raw, meter_id) {
-        info!(
-            "wMBus: Ignoring meter {:02X}{:02X}{:02X}{:02X}",
-            raw[7], raw[6], raw[5], raw[4]
-        );
+        let &[id0, id1, id2, id3] = raw.get(4..8)? else {
+            return None;
+        };
+        info!("wMBus: Ignoring meter {id3:02X}{id2:02X}{id1:02X}{id0:02X}");
         return None;
     }
 
     // CI=0x8D: ELL-II (encrypted)
     //   [10] CI  [11] CC  [12] ACC  [13..17] SN (4 bytes)  [17+] encrypted
-    if raw[10] != 0x8D {
-        warn!("wMBus: Unsupported CI field: 0x{:02X}", raw[10]);
+    let ci = *raw.get(10)?;
+    if ci != 0x8D {
+        warn!("wMBus: Unsupported CI field: 0x{ci:02X}");
         return None;
     }
 

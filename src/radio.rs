@@ -18,6 +18,8 @@ pub enum Cc1101RadioError {
     Spi(#[from] spi::SpiError),
     #[error("ESP-IDF error: {0}")]
     Esp(#[from] esp_idf_sys::EspError),
+    #[error("Invalid radio data: {0}")]
+    InvalidData(&'static str),
 }
 
 // SPI access mode bits
@@ -120,11 +122,19 @@ impl<'a> Cc1101Radio<'a> {
 
     fn read_fifo_burst(&mut self, buf: &mut [u8]) -> Result<(), Cc1101RadioError> {
         // First byte is the FIFO address with burst read flag
-        let len = buf.len();
-        let mut txbuf = vec![0u8; len + 1];
-        txbuf[0] = FIFO | READ_BURST;
+        let tx_len = buf
+            .len()
+            .checked_add(1)
+            .ok_or(Cc1101RadioError::InvalidData("FIFO buffer length overflow"))?;
+        let mut txbuf = vec![0u8; tx_len];
+        *txbuf
+            .first_mut()
+            .ok_or(Cc1101RadioError::InvalidData("FIFO transfer buffer is empty"))? = FIFO | READ_BURST;
         self.spi.transfer_in_place(&mut txbuf)?;
-        buf.copy_from_slice(&txbuf[1..]);
+        let data = txbuf
+            .get(1..)
+            .ok_or(Cc1101RadioError::InvalidData("FIFO response buffer is empty"))?;
+        buf.copy_from_slice(data);
         Ok(())
     }
 
@@ -255,26 +265,25 @@ impl<'a> Cc1101Radio<'a> {
             // Restart receiver for next packet
             self.start_receiver()?;
 
-            // Check preamble bytes
-            if fifo_data.len() < 3 {
+            // Check preamble bytes and split them from the payload.
+            let [received_hi, received_lo, payload @ ..] = fifo_data.as_slice() else {
                 warn!("CC1101: Packet too short ({} bytes)", fifo_data.len());
                 continue;
-            }
+            };
 
             let sync_hi = ((WMBUS_SYNC_WORD >> 8) & 0xFF) as u8;
             let sync_lo = (WMBUS_SYNC_WORD & 0xFF) as u8;
-            if fifo_data[0] != sync_hi || fifo_data[1] != sync_lo {
+            if *received_hi != sync_hi || *received_lo != sync_lo {
                 warn!(
                     "CC1101: Bad preamble: {:02X} {:02X} (expected {:02X} {:02X})",
-                    fifo_data[0], fifo_data[1], sync_hi, sync_lo
+                    received_hi, received_lo, sync_hi, sync_lo
                 );
                 continue;
             }
 
             // Strip preamble, return L-field + payload
-            let payload = fifo_data[2..].to_vec();
             info!("CC1101: Valid wMBus packet, {} bytes", payload.len());
-            return Ok(payload);
+            return Ok(payload.to_vec());
         }
     }
 }

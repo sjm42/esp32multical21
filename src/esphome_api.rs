@@ -13,6 +13,7 @@ use crate::*;
 const ESPHOME_API_PORT: u16 = 6053;
 const API_VERSION_MAJOR: u32 = 1;
 const API_VERSION_MINOR: u32 = 14;
+const MAX_FRAME_PAYLOAD_LEN: u64 = 8 * 1024;
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -606,17 +607,25 @@ async fn read_frame(stream: &mut TcpStream) -> io::Result<(u32, Vec<u8>)> {
         ));
     }
 
-    let payload_len = read_varuint_async(stream).await? as usize;
-    let msg_type = read_varuint_async(stream).await? as u32;
+    let payload_len = read_varuint_async(stream).await?;
+    let msg_type = read_varuint_async(stream).await?;
 
-    if payload_len > 64 * 1024 {
+    if payload_len > MAX_FRAME_PAYLOAD_LEN {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("payload too large: {payload_len}"),
         ));
     }
+    let payload_len = usize::try_from(payload_len)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "payload length does not fit usize"))?;
+    let msg_type = u32::try_from(msg_type)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "message type does not fit u32"))?;
 
-    let mut payload = vec![0_u8; payload_len];
+    let mut payload = Vec::new();
+    payload
+        .try_reserve_exact(payload_len)
+        .map_err(|error| io::Error::other(format!("could not allocate ESPHome payload: {error}")))?;
+    payload.resize(payload_len, 0_u8);
     if payload_len > 0 {
         stream.read_exact(&mut payload).await?;
     }
@@ -624,7 +633,14 @@ async fn read_frame(stream: &mut TcpStream) -> io::Result<(u32, Vec<u8>)> {
 }
 
 async fn send_frame(stream: &mut TcpStream, msg_type: ApiMessageType, payload: &[u8]) -> io::Result<()> {
-    let mut frame = Vec::with_capacity(1 + 10 + 10 + payload.len());
+    let capacity = payload
+        .len()
+        .checked_add(21)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "ESPHome frame length overflow"))?;
+    let mut frame = Vec::new();
+    frame
+        .try_reserve_exact(capacity)
+        .map_err(|error| io::Error::other(format!("could not allocate ESPHome frame: {error}")))?;
     frame.push(0x00);
     put_varuint(payload.len() as u64, &mut frame);
     put_varuint(u64::from(msg_type.id()), &mut frame);
@@ -638,6 +654,9 @@ async fn read_varuint_async(stream: &mut TcpStream) -> io::Result<u64> {
     let mut shift = 0_u32;
     for _ in 0..10 {
         let byte = stream.read_u8().await?;
+        if shift == 63 && byte & 0xfe != 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "varuint overflow"));
+        }
         result |= (u64::from(byte & 0x7F)) << shift;
         if (byte & 0x80) == 0 {
             return Ok(result);
@@ -655,11 +674,11 @@ fn parse_hello_request(payload: &[u8]) -> Option<(String, u32, u32)> {
 
     while idx < payload.len() {
         let key = read_varuint_from_slice(payload, &mut idx)?;
-        let field_number = (key >> 3) as u32;
+        let field_number = u32::try_from(key >> 3).ok()?;
         let wire_type = (key & 0x07) as u8;
         match wire_type {
             0 => {
-                let v = read_varuint_from_slice(payload, &mut idx)? as u32;
+                let v = u32::try_from(read_varuint_from_slice(payload, &mut idx)?).ok()?;
                 match field_number {
                     2 => major = v,
                     3 => minor = v,
@@ -667,17 +686,16 @@ fn parse_hello_request(payload: &[u8]) -> Option<(String, u32, u32)> {
                 }
             }
             2 => {
-                let len = read_varuint_from_slice(payload, &mut idx)? as usize;
-                if idx + len > payload.len() {
-                    return None;
-                }
+                let len = usize::try_from(read_varuint_from_slice(payload, &mut idx)?).ok()?;
+                let end = idx.checked_add(len)?;
+                let value = payload.get(idx..end)?;
                 if field_number == 1 {
-                    client_info = std::str::from_utf8(&payload[idx..idx + len]).ok()?.to_string();
+                    client_info = std::str::from_utf8(value).ok()?.to_string();
                 }
-                idx += len;
+                idx = end;
             }
-            1 => idx += 8,
-            5 => idx += 4,
+            1 => idx = idx.checked_add(8)?,
+            5 => idx = idx.checked_add(4)?,
             _ => return None,
         }
         if idx > payload.len() {
@@ -692,11 +710,11 @@ fn read_varuint_from_slice(data: &[u8], idx: &mut usize) -> Option<u64> {
     let mut out = 0_u64;
     let mut shift = 0_u32;
     for _ in 0..10 {
-        if *idx >= data.len() {
+        let b = *data.get(*idx)?;
+        *idx = idx.checked_add(1)?;
+        if shift == 63 && b & 0xfe != 0 {
             return None;
         }
-        let b = data[*idx];
-        *idx += 1;
         out |= (u64::from(b & 0x7F)) << shift;
         if (b & 0x80) == 0 {
             return Some(out);
@@ -755,5 +773,29 @@ fn pb_put_string(field_number: u32, value: &str, out: &mut Vec<u8>) {
     pb_put_key(field_number, 2, out);
     put_varuint(value.len() as u64, out);
     out.extend_from_slice(value.as_bytes());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_hello_request, read_varuint_from_slice};
+
+    #[test]
+    fn parses_valid_hello_request() {
+        let payload = [0x0a, 0x03, b'a', b'p', b'p', 0x10, 0x01, 0x18, 0x0e];
+        assert_eq!(parse_hello_request(&payload), Some(("app".to_string(), 1, 14)));
+    }
+
+    #[test]
+    fn rejects_length_that_exceeds_the_payload() {
+        let payload = [0x0a, 0x7f, b'a'];
+        assert_eq!(parse_hello_request(&payload), None);
+    }
+
+    #[test]
+    fn rejects_overflowing_varuint() {
+        let data = [0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x02];
+        let mut index = 0;
+        assert_eq!(read_varuint_from_slice(&data, &mut index), None);
+    }
 }
 // EOF

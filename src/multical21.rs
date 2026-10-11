@@ -2,6 +2,12 @@
 
 use crate::*;
 
+fn read_u32_le(data: &[u8], offset: usize) -> Option<u32> {
+    let end = offset.checked_add(size_of::<u32>())?;
+    let bytes = data.get(offset..end)?.try_into().ok()?;
+    Some(u32::from_le_bytes(bytes))
+}
+
 /// Parse decrypted Multical 21 payload into a MeterReading.
 /// Decrypted data layout (matching C++ reference):
 ///   [0..2]  = CRC-16 of [2..end]
@@ -14,15 +20,16 @@ pub fn parse_multical21(data: &[u8]) -> Option<MeterReading> {
     }
 
     // Verify CRC: data[0..2] = CRC of data[2..end]
-    let read_crc = (data[1] as u16) << 8 | data[0] as u16;
-    let calc_crc = crc16_en13757(&data[2..]);
+    let crc_bytes = data.get(..2)?.try_into().ok()?;
+    let read_crc = u16::from_le_bytes(crc_bytes);
+    let calc_crc = crc16_en13757(data.get(2..)?);
     if read_crc != calc_crc {
         warn!("Multical21: CRC mismatch (read={:04X} calc={:04X})", read_crc, calc_crc);
         info!("Multical21: data[{}]: {:02X?}", data.len(), data);
         return None;
     }
 
-    let ci = data[2];
+    let ci = *data.get(2)?;
     info!("Multical21: CI={:02X} CRC OK", ci);
 
     let now = Utc::now();
@@ -41,16 +48,16 @@ pub fn parse_multical21(data: &[u8]) -> Option<MeterReading> {
                 //   [13..17]: target volume (u32 LE, liters)
                 //   [17]:     flow temperature
                 //   [18]:     ambient temperature
-                let total_l = u32::from_le_bytes([data[9], data[10], data[11], data[12]]);
-                let month_start_l = u32::from_le_bytes([data[13], data[14], data[15], data[16]]);
+                let total_l = read_u32_le(data, 9)?;
+                let month_start_l = read_u32_le(data, 13)?;
                 Some(MeterReading {
                     total_l,
                     month_start_l,
                     total_m3: total_l as f32 / 1000.0,
                     month_start_m3: month_start_l as f32 / 1000.0,
-                    flow_temp: data[17],
-                    ambient_temp: data[18],
-                    info_codes: data[4],
+                    flow_temp: *data.get(17)?,
+                    ambient_temp: *data.get(18)?,
+                    info_codes: *data.get(4)?,
                     timestamp,
                     timestamp_s,
                 })
@@ -68,16 +75,16 @@ pub fn parse_multical21(data: &[u8]) -> Option<MeterReading> {
                 //   [16..20]: target volume (u32 LE, liters)
                 //   [23]:     flow temperature
                 //   [29]:     ambient temperature
-                let total_l = u32::from_le_bytes([data[10], data[11], data[12], data[13]]);
-                let month_start_l = u32::from_le_bytes([data[16], data[17], data[18], data[19]]);
+                let total_l = read_u32_le(data, 10)?;
+                let month_start_l = read_u32_le(data, 16)?;
                 Some(MeterReading {
                     total_l,
                     month_start_l,
                     total_m3: total_l as f32 / 1000.0,
                     month_start_m3: month_start_l as f32 / 1000.0,
-                    flow_temp: data[23],
-                    ambient_temp: data[29],
-                    info_codes: data[4],
+                    flow_temp: *data.get(23)?,
+                    ambient_temp: *data.get(29)?,
+                    info_codes: *data.get(4)?,
                     timestamp,
                     timestamp_s,
                 })
